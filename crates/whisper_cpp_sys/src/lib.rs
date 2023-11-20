@@ -1,3 +1,4 @@
-fn main() {
-    println!("Hello, world!");
-}
+
+extern crate link_cplusplus;
+
+include!(concat!(env!("OUT_DIR"), "/bindings.rs"));

@@ -1,8 +1,17 @@
 [package]
 name = "whisper_cpp_sys"
 version = "0.1.0"
+description = "Automatically-generated bindings to whisper.cpp's C API"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Pedro Valente <pedro.amaral.valente@gmail.com>"]
+repository = "https://github.com/binedge/llama_cpp-rs"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+publish = true
 
 [dependencies]
+link-cplusplus = "1.0.9"
+
+[build-dependencies]
+bindgen = "0.69.1"
+cmake = "0.1.50"
