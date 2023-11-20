@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/whisper_cpp_sys",
+    "crates/whisper_cpp"
+    #"crates/llama_cpp_tests"
+]
