@@ -1,11 +1,12 @@
 use std::ffi::CString;
+use std::ptr::{null, null_mut};
 use std::sync::Arc;
 
 use derive_more::{Deref, DerefMut};
 use thiserror::Error;
 use tokio::sync::RwLock;
 
-use whisper_cpp_sys::{whisper_context, whisper_context_params, whisper_free, whisper_free_state, whisper_full_params, whisper_full_with_state, whisper_init_from_file_with_params_no_state, whisper_init_state, whisper_state};
+use whisper_cpp_sys::{whisper_context, whisper_context_params, whisper_free, whisper_free_state, whisper_full_default_params, whisper_full_get_segment_text_from_state, whisper_full_n_segments_from_state, whisper_full_params, whisper_full_with_state, whisper_init_from_file_with_params_no_state, whisper_init_state, whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH, whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY, whisper_state};
 
 #[derive(Clone, Deref, DerefMut)]
 struct WhisperContext(*mut whisper_context);
@@ -94,6 +95,10 @@ pub enum WhisperSessionError {
     Initialization,
     #[error("failed to process audio samples")]
     Internal,
+    #[error("failed to convert  WhisperParams into whisper_full_params: {0}")]
+    Params(#[from] WhisperParamsError),
+    #[error("string retrieved from whisper.ccp is invalid: {0}")]
+    CString(#[from] std::ffi::IntoStringError),
 }
 
 // Due to using the with state variant of each function, we can use sessions across multiple
@@ -181,10 +186,10 @@ impl WhisperSession {
     /// Run the entire model: PCM -> log mel spectrogram -> encoder -> decoder -> text.
     /// Uses the specified decoding strategy to obtain the text.
     #[doc(alias = "whisper_full_with_state")]
-    pub async fn full(&self, samples: &[f32]) -> Result<(), WhisperSessionError> {
+    pub async fn full(&self, params: WhisperParams, samples: &[f32]) -> Result<(), WhisperSessionError> {
         let locked = self.context.read().await;
-        let c_params = whisper_full_params {};
         let res = unsafe {
+            let (_vec, c_params) = params.c_params()?;
             whisper_full_with_state(locked.0, self.state.0, c_params, samples.as_ptr(), samples.len() as std::os::raw::c_int)
         };
 
@@ -198,8 +203,12 @@ impl WhisperSession {
     /// Number of generated text segments.
     /// A segment can be a few words, a sentence, or even a paragraph.
     #[doc(alias = "whisper_full_n_segments_from_state")]
-    fn segment_count(&self) {
-        todo!()
+    pub fn segment_count(&self) -> u32 {
+        let res = unsafe {
+            whisper_full_n_segments_from_state(self.state.0)
+        };
+
+        res as u32
     }
 
     /// Get the language id associated with the [`WhisperSession`].
@@ -223,8 +232,13 @@ impl WhisperSession {
 
     /// Get the text of the specified segment.
     #[doc(alias = "whisper_full_get_segment_text_from_state")]
-    fn segment_text(&self) {
-        todo!()
+    pub fn segment_text(&self, segment: u32) -> Result<String, WhisperSessionError> {
+        let text = unsafe {
+            let res = whisper_full_get_segment_text_from_state(self.state.0, segment as std::os::raw::c_int);
+            CString::from_raw(res.cast_mut())
+        };
+
+        Ok(text.into_string()?)
     }
 
     /// Get number of tokens in the specified segment.
@@ -259,23 +273,252 @@ impl WhisperSession {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[derive(Debug, Error)]
+enum WhisperParamsError {
+    #[error("failed to convert String to CString: {0}")]
+    SessionInitialization(#[from] std::ffi::NulError),
 
-    #[derive(Debug, Error)]
-    enum TestError {
-        #[error("whisper error")]
-        Whisper(#[from] WhisperError),
-        #[error("whisper session error")]
-        Session(#[from] WhisperSessionError),
+}
+
+pub enum WhisperSampling {
+    Greedy,
+    BeamSearch,
+}
+
+pub struct WhisperParams {
+    /// The sampling strategy to be used.
+    strategy: WhisperSampling,
+
+    /// Number of threads used for the computation.
+    thread_count: u32,
+
+    /// Max tokens to use from past text as prompt for the decoder.
+    max_text_ctx: u32,
+
+    /// Start offset in milliseconds.
+    offset_ms: u32,
+
+    /// Audio duration in milliseconds.
+    duration_ms: u32,
+
+    /// Translate the audio to ??? (TODO)
+    translate: bool,
+
+    /// Do not use past transcription (if any) as initial prompt for the decoder.
+    no_context: bool,
+
+    /// Do not generate timestamps.
+    no_timestamps: bool,
+
+    /// Force single segment output (useful for streaming).
+    single_segment: bool,
+
+    /// Print special tokens (e.g. <SOT>, <EOT>, <BEG>, etc.).
+    print_special: bool,
+
+    /// Print progress information.
+    print_progress: bool,
+
+    /// Print results from within whisper.cpp (avoid it, use callback instead).
+    print_realtime: bool,
+
+    /// Print timestamps for each text segment when printing realtime.
+    print_timestamps: bool,
+
+    /// Enable token-level timestamps.
+    token_timestamps: bool,
+
+    /// Timestamp token probability threshold (~0.01).
+    thold_pt: f32,
+
+    /// Timestamp token sum probability threshold (~0.01).
+    thold_ptsum: f32,
+
+    /// Max segment length in characters.
+    max_len: u32,
+
+    /// Split on word rather than on token (when used with max_len).
+    split_on_word: bool,
+
+    /// Max tokens per segment (0 = no limit).
+    max_tokens: u32,
+
+    /// Speed-up the audio by 2x using Phase Vocoder.
+    ///
+    /// Note: these can significantly reduce the quality of the output.
+    speed_up: bool,
+
+    /// Enable debug_mode provides extra info (eg. Dump log_mel).
+    debug_mode: bool,
+
+    /// Overwrite the audio context size (0 = use default).
+    audio_ctx: u32,
+
+    /// Enable *tinydiarize* speaker turn detection.
+    tdrz_enable: bool,
+
+    /// Initial prompt, appended to any existing text context from a previous call.
+    initial_prompt: String,
+
+    /// Tokens to provide to the whisper decoder as initial prompt.
+    /// These are prepended to any existing text context from a previous call.
+    prompt_tokens: (),
+
+    /// Number of tokens in the initial prompt.
+    prompt_token_count: u32,
+
+    /// For auto-detection, set to "" or "auto".
+    language: String,
+
+    /// Detect the language automatically.
+    detect_language: bool,
+
+    /// ref: https://github.com/openai/whisper/blob/f82bc59f5ea234d4b97fb2860842ed38519f7e65/whisper/decoding.py#L89
+    suppress_blank: bool,
+
+    /// ref: https://github.com/openai/whisper/blob/7858aa9c08d98f75575035ecd6481f462d66ca27/whisper/tokenizer.py#L224-L253
+    suppress_non_speech_tokens: bool,
+
+    /// Initial decoding temperature, ref: https://ai.stackexchange.com/a/32478
+    temperature: f32,
+
+    /// ref: https://github.com/openai/whisper/blob/f82bc59f5ea234d4b97fb2860842ed38519f7e65/whisper/decoding.py#L97
+    max_initial_ts: f32,
+
+    /// ref: https://github.com/openai/whisper/blob/f82bc59f5ea234d4b97fb2860842ed38519f7e65/whisper/transcribe.py#L267
+    length_penalty: f32,
+
+    /// Temperature fallback.
+    temperature_inc: f32,
+
+    /// Similar to OpenAI's "compression_ratio_threshold".
+    entropy_thold: f32,
+
+    ///
+    logprob_thold: f32,
+
+    /// Not implemented in whisper.cpp
+    no_speech_thold: f32,
+
+    /// ref: https://github.com/openai/whisper/blob/f82bc59f5ea234d4b97fb2860842ed38519f7e65/whisper/transcribe.py#L264
+    greedy: (),
+
+    /// ref: https://github.com/openai/whisper/blob/f82bc59f5ea234d4b97fb2860842ed38519f7e65/whisper/transcribe.py#L265
+    /// not implemented, ref: https://arxiv.org/pdf/2204.05424.pdf
+    beam_search: (),
+
+    /// Called for every newly generated text segment.
+    new_segment_callback: (),
+    new_segment_callback_user_data: (),
+
+    /// Called on each progress update.
+    progress_callback: (),
+    progress_callback_user_data: (),
+
+    /// Called each time before the encoder starts.
+    encoder_begin_callback: (),
+    encoder_begin_callback_user_data: (),
+
+    /// Called each time before ggml computation starts.
+    abort_callback: (),
+    abort_callback_user_data: (),
+
+    /// Called by each decoder to filter obtained logits.
+    logits_filter_callback: (),
+    logits_filter_callback_user_data: (),
+
+    ///
+    grammar_rules: (),
+    grammar_rule_count: u32,
+    i_start_rule: u32,
+    grammar_penalty: f32,
+}
+
+impl WhisperParams {
+    pub fn new(sampling_strategy: WhisperSampling) -> Self {
+        let c_strategy = match sampling_strategy {
+            WhisperSampling::Greedy => { whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY }
+            WhisperSampling::BeamSearch => { whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH }
+        };
+
+        let c_params = unsafe {
+            whisper_full_default_params(c_strategy)
+        };
+
+        c_params.into()
     }
 
-    #[test]
-    fn it_works() -> Result<(), TestError> {
-        let model = WhisperModel::new_from_file("", false)?;
+    /// Returns a [`whisper_full_params`] equivalent to this [`WhisperParams`].
+    ///
+    /// SAFETY: The returned [`whisper_full_params`] object must not live longer than the
+    /// accompanying [`Vec`], as it contains pointers to the vector's elements.
+    unsafe fn c_params(&self) -> Result<(Vec<CString>, whisper_full_params), WhisperParamsError> {
+        let v = vec![CString::new(self.initial_prompt.as_str())?, CString::new(self.language.as_str())?];
+        Ok((
+            v,
+            whisper_full_params {
+                strategy: match self.strategy {
+                    WhisperSampling::Greedy => { whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY }
+                    WhisperSampling::BeamSearch => { whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH }
+                },
+                n_threads: self.thread_count as std::os::raw::c_int,
+                n_max_text_ctx: self.max_text_ctx as std::os::raw::c_int,
+                offset_ms: self.offset_ms as std::os::raw::c_int,
+                duration_ms: self.duration_ms as std::os::raw::c_int,
+                translate: self.translate,
+                no_context: self.no_context,
+                no_timestamps: self.no_timestamps,
+                single_segment: self.single_segment,
+                print_special: self.print_special,
+                print_progress: self.print_progress,
+                print_realtime: self.print_realtime,
+                print_timestamps: self.print_timestamps,
+                token_timestamps: self.token_timestamps,
+                thold_pt: self.thold_pt,
+                thold_ptsum: self.thold_ptsum,
+                max_len: self.max_len as std::os::raw::c_int,
+                split_on_word: self.split_on_word,
+                max_tokens: self.max_tokens as std::os::raw::c_int,
+                speed_up: self.speed_up,
+                debug_mode: self.debug_mode,
+                audio_ctx: self.audio_ctx as std::os::raw::c_int,
+                tdrz_enable: self.tdrz_enable,
+                initial_prompt: v[0].as_ptr(),
+                prompt_tokens: (),
+                prompt_n_tokens: self.prompt_token_count as std::os::raw::c_int,
+                language: v[1].as_ptr(),
+                detect_language: self.detect_language,
+                suppress_blank: self.suppress_blank,
+                suppress_non_speech_tokens: self.suppress_non_speech_tokens,
+                temperature: self.temperature,
+                max_initial_ts: self.max_initial_ts,
+                length_penalty: self.length_penalty,
+                temperature_inc: self.temperature_inc,
+                entropy_thold: self.entropy_thold,
+                logprob_thold: self.logprob_thold,
+                no_speech_thold: self.no_speech_thold,
+                greedy: whisper_full_params__bindgen_ty_1 {},
+                beam_search: whisper_full_params__bindgen_ty_2 {},
+                new_segment_callback: None,
+                new_segment_callback_user_data: null_mut(),
+                progress_callback: None,
+                progress_callback_user_data: null_mut(),
+                encoder_begin_callback: None,
+                encoder_begin_callback_user_data: null_mut(),
+                abort_callback: None,
+                abort_callback_user_data: null_mut(),
+                logits_filter_callback: None,
+                logits_filter_callback_user_data: null_mut(),
+                grammar_rules: (),
+                n_grammar_rules: 0,
+                i_start_rule: 0,
+                grammar_penalty: 0.0,
+            }))
+    }
+}
 
-
-        Ok(())
+impl From<whisper_full_params> for WhisperParams {
+    fn from(value: whisper_full_params) -> Self {
+        todo!()
     }
 }
