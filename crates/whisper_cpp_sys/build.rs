@@ -1,35 +1,12 @@
-use std::{env, fs, io};
-use std::path::{Path, PathBuf};
+use std::{env, fs};
+use std::path::PathBuf;
 use std::process::exit;
 
 const SUBMODULE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/thirdparty/whisper.cpp");
 
-fn copy_recursively(src: &Path, dst: &Path) -> io::Result<()> {
-    if !dst.exists() {
-        fs::create_dir_all(dst)?;
-    }
-
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-
-        if file_type.is_dir() {
-            copy_recursively(&entry.path(), &dst.join(entry.file_name()))?;
-        } else {
-            fs::copy(entry.path(), dst.join(entry.file_name()))?;
-        }
-    }
-
-    Ok(())
-}
-
 fn main() {
     let submodule_dir = &PathBuf::from(SUBMODULE_DIR);
-
-    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-
-    let build_dir = out_dir.join("build");
-    let header_path = out_dir.join("build/whisper.h");
+    let header_path = submodule_dir.join("whisper.h");
 
     if fs::read_dir(submodule_dir).is_err() {
         eprintln!("Could not find {SUBMODULE_DIR}. Did you forget to initialize submodules?");
@@ -37,19 +14,7 @@ fn main() {
         exit(1);
     }
 
-    if let Err(err) = fs::create_dir_all(&build_dir) {
-        eprintln!("Could not create {build_dir:#?}: {err}");
-
-        exit(1);
-    }
-
-    if let Err(err) = copy_recursively(submodule_dir, &build_dir) {
-        eprintln!("Could not copy {submodule_dir:#?} into {build_dir:#?}: {err}");
-
-        exit(1);
-    }
-
-    let dst = cmake::Config::new(&build_dir)
+    let dst = cmake::Config::new(submodule_dir)
         .configure_arg("-DBUILD_SHARED_LIBS=Off")
         .configure_arg("-DWHISPER_BUILD_EXAMPLES=Off")
         .configure_arg("-DWHISPER_BUILD_TESTS=Off")
