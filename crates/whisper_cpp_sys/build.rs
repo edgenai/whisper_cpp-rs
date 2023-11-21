@@ -1,6 +1,6 @@
+use std::{env, fs, io};
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use std::{env, fs, io};
 
 const SUBMODULE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/thirdparty/whisper.cpp");
 
@@ -55,9 +55,9 @@ fn main() {
         .configure_arg("-DWHISPER_BUILD_TESTS=Off")
         .build();
 
-    println!("cargo:rustc-link-search=native={}/lib", dst.display());
-    println!("cargo:rustc-link-search=native={}/lib64", dst.display());
-    println!("cargo:rustc-link-lib=static=llama");
+    println!("cargo:rustc-link-search=native={}/lib/static", dst.display());
+    println!("cargo:rustc-link-search=native={}/lib64/static", dst.display());
+    println!("cargo:rustc-link-lib=static=whisper");
 
     let bindings = bindgen::Builder::default()
         .header(header_path.to_string_lossy())
@@ -78,5 +78,4 @@ fn main() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
-
 }
