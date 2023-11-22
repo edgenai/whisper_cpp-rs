@@ -202,7 +202,7 @@ impl WhisperSession {
     #[doc(alias = "whisper_full_with_state")]
     pub async fn full(
         &self,
-        params: &WhisperParams,
+        params: WhisperParams,
         samples: &[f32],
     ) -> Result<(), WhisperSessionError> {
         let locked = self.context.read().await;

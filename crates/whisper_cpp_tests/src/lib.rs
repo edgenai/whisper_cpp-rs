@@ -16,12 +16,14 @@ mod tests {
 
     #[tokio::test]
     async fn it_works() -> Result<(), TestError> {
+        //TODO change to use env variables
         let model = WhisperModel::new_from_file("/home/pedro/dev/models/ggml-base.en.bin", false)?;
 
         let session = model.new_session().await?;
 
-        let mut params = WhisperParams::new(WhisperSampling::default_greedy());
+        let params = WhisperParams::new(WhisperSampling::default_greedy());
 
+        //TODO change to use env variables
         let mut file = std::fs::File::open("/home/pedro/Downloads/samples_jfk.wav")?;
         let (header, data) = wav::read(&mut file)?;
         let sixteens = data.as_sixteen().unwrap();
@@ -30,7 +32,7 @@ mod tests {
             .map(|v| *v as f32 / 32768.)
             .collect();
 
-        session.full(&params, &samples).await?;
+        session.full(params, &samples).await?;
 
         let mut result = "".to_string();
         for i in 0..session.segment_count() {
