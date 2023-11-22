@@ -10,16 +10,27 @@ mod tests {
         Whisper(#[from] WhisperError),
         #[error("whisper session error")]
         Session(#[from] WhisperSessionError),
+        #[error("file was not found: {0}")]
+        FileNotFound(#[from] std::io::Error),
     }
 
     #[tokio::test]
     async fn it_works() -> Result<(), TestError> {
-        let model = WhisperModel::new_from_file("", false)?;
-        let session = model.new_session().await?;
-        let params = WhisperParams::new(WhisperSampling::default_greedy());
-        let samples: Vec<f32> = vec![];
+        let model = WhisperModel::new_from_file("/home/pedro/dev/models/ggml-base.en.bin", false)?;
 
-        session.full(params, &samples).await?;
+        let session = model.new_session().await?;
+
+        let mut params = WhisperParams::new(WhisperSampling::default_greedy());
+
+        let mut file = std::fs::File::open("/home/pedro/Downloads/samples_jfk.wav")?;
+        let (header, data) = wav::read(&mut file)?;
+        let sixteens = data.as_sixteen().unwrap();
+        let samples: Vec<_> = sixteens[..sixteens.len() / header.channel_count as usize]
+            .iter()
+            .map(|v| *v as f32 / 32768.)
+            .collect();
+
+        session.full(&params, &samples).await?;
 
         let mut result = "".to_string();
         for i in 0..session.segment_count() {

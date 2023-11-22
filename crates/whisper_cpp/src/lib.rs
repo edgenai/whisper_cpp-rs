@@ -1,4 +1,5 @@
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
+use std::num::NonZeroUsize;
 use std::ptr::null_mut;
 use std::slice;
 use std::sync::Arc;
@@ -108,7 +109,7 @@ pub enum WhisperSessionError {
     #[error("failed to convert  WhisperParams into whisper_full_params: {0}")]
     Params(#[from] WhisperParamsError),
     #[error("string retrieved from whisper.ccp is invalid: {0}")]
-    CString(#[from] std::ffi::IntoStringError),
+    CStr(#[from] std::str::Utf8Error),
 }
 
 // Due to using the with state variant of each function, we can use sessions across multiple
@@ -201,7 +202,7 @@ impl WhisperSession {
     #[doc(alias = "whisper_full_with_state")]
     pub async fn full(
         &self,
-        params: WhisperParams,
+        params: &WhisperParams,
         samples: &[f32],
     ) -> Result<(), WhisperSessionError> {
         let locked = self.context.read().await;
@@ -259,10 +260,10 @@ impl WhisperSession {
                 self.state.0,
                 segment as std::os::raw::c_int,
             );
-            CString::from_raw(res.cast_mut())
+            CStr::from_ptr(res.cast_mut())
         };
 
-        Ok(text.into_string()?)
+        Ok(text.to_str()?.to_string())
     }
 
     /// Get number of tokens in the specified segment.
@@ -298,11 +299,13 @@ impl WhisperSession {
 }
 
 #[derive(Debug, Error)]
-enum WhisperParamsError {
+pub enum WhisperParamsError {
     #[error("failed to convert String to CString: {0}")]
     SessionInitialization(#[from] std::ffi::NulError),
 }
 
+
+#[derive(Debug)]
 pub enum WhisperSampling {
     Greedy {
         /// ref: https://github.com/openai/whisper/blob/f82bc59f5ea234d4b97fb2860842ed38519f7e65/whisper/transcribe.py#L264
@@ -317,6 +320,7 @@ pub enum WhisperSampling {
     },
 }
 
+
 impl WhisperSampling {
     pub fn default_greedy() -> Self {
         Self::Greedy { best_of: 0 }
@@ -330,12 +334,14 @@ impl WhisperSampling {
     }
 }
 
+
+#[derive(Debug)]
 pub struct WhisperParams {
     /// The sampling strategy to be used.
     strategy: WhisperSampling,
 
     /// Number of threads used for the computation.
-    thread_count: u32,
+    pub thread_count: u32,
 
     /// Max tokens to use from past text as prompt for the decoder.
     max_text_ctx: u32,
@@ -365,10 +371,10 @@ pub struct WhisperParams {
     print_progress: bool,
 
     /// Print results from within whisper.cpp (avoid it, use callback instead).
-    print_realtime: bool,
+    pub print_realtime: bool,
 
     /// Print timestamps for each text segment when printing realtime.
-    print_timestamps: bool,
+    pub print_timestamps: bool,
 
     /// Enable token-level timestamps.
     token_timestamps: bool,
@@ -489,10 +495,17 @@ impl WhisperParams {
     /// accompanying [`Vec`] and this [`WhisperParams`], as it contains pointers to the vector's
     /// elements and members of this object instance.
     unsafe fn c_params(&self) -> Result<(Vec<CString>, whisper_full_params), WhisperParamsError> {
-        let mut v = vec![
-            CString::new(self.initial_prompt.as_str())?,
-            CString::new(self.language.as_str())?,
-        ];
+        let mut v = vec![];
+
+        fn push_str(storage: &mut Vec<CString>, value: &str) -> Result<*const std::os::raw::c_char, std::ffi::NulError> {
+            if value.is_empty() {
+                Ok(null_mut())
+            } else {
+                let i = storage.len();
+                storage.push(CString::new(value)?);
+                Ok(storage[i].as_ptr())
+            }
+        }
 
         let c_params = whisper_full_params {
             strategy: match self.strategy {
@@ -523,15 +536,7 @@ impl WhisperParams {
             debug_mode: self.debug_mode,
             audio_ctx: self.audio_ctx as std::os::raw::c_int,
             tdrz_enable: self.tdrz_enable,
-            initial_prompt: {
-                if self.initial_prompt.is_empty() {
-                    null_mut()
-                } else {
-                    let i = v.len();
-                    v.push(CString::new(self.initial_prompt.as_str())?);
-                    v[i].as_ptr()
-                }
-            },
+            initial_prompt: push_str(&mut v, &self.initial_prompt)?,
             prompt_tokens: {
                 if self.prompt_tokens.is_empty() {
                     null_mut()
@@ -540,15 +545,7 @@ impl WhisperParams {
                 }
             },
             prompt_n_tokens: self.prompt_tokens.len() as std::os::raw::c_int,
-            language: {
-                if self.language.is_empty() {
-                    null_mut()
-                } else {
-                    let i = v.len();
-                    v.push(CString::new(self.initial_prompt.as_str())?);
-                    v[i].as_ptr()
-                }
-            },
+            language: push_str(&mut v, &self.language)?,
             detect_language: self.detect_language,
             suppress_blank: self.suppress_blank,
             suppress_non_speech_tokens: self.suppress_non_speech_tokens,
@@ -624,7 +621,7 @@ impl From<whisper_full_params> for WhisperParams {
                     }
                 }
             },
-            thread_count: value.n_threads as u32,
+            thread_count: std::thread::available_parallelism().unwrap_or(unsafe { NonZeroUsize::new_unchecked(4) }).get() as u32,
             max_text_ctx: value.n_max_text_ctx as u32,
             offset_ms: value.offset_ms as u32,
             duration_ms: value.duration_ms as u32,
@@ -650,8 +647,8 @@ impl From<whisper_full_params> for WhisperParams {
                 if value.initial_prompt.is_null() {
                     "".to_string()
                 } else {
-                    let c_str = unsafe { CString::from_raw(value.initial_prompt.cast_mut()) };
-                    c_str.into_string().unwrap_or("".to_string())
+                    let c_str = unsafe { CStr::from_ptr(value.initial_prompt.cast_mut()) };
+                    c_str.to_str().unwrap_or("").to_string()
                 }
             },
             prompt_tokens: {
@@ -668,8 +665,8 @@ impl From<whisper_full_params> for WhisperParams {
                 if value.language.is_null() {
                     "".to_string()
                 } else {
-                    let c_str = unsafe { CString::from_raw(value.language.cast_mut()) };
-                    c_str.into_string().unwrap_or("".to_string())
+                    let c_str = unsafe { CStr::from_ptr(value.language.cast_mut()) };
+                    c_str.to_str().unwrap_or("").to_string()
                 }
             },
             detect_language: value.detect_language,
