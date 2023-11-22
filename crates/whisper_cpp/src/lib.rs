@@ -1,12 +1,21 @@
 use std::ffi::CString;
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
+use std::slice;
 use std::sync::Arc;
 
 use derive_more::{Deref, DerefMut};
 use thiserror::Error;
 use tokio::sync::RwLock;
 
-use whisper_cpp_sys::{whisper_context, whisper_context_params, whisper_free, whisper_free_state, whisper_full_default_params, whisper_full_get_segment_text_from_state, whisper_full_n_segments_from_state, whisper_full_params, whisper_full_with_state, whisper_init_from_file_with_params_no_state, whisper_init_state, whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH, whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY, whisper_state};
+use whisper_cpp_sys::{
+    whisper_context, whisper_context_params, whisper_free, whisper_free_state,
+    whisper_full_default_params, whisper_full_get_segment_text_from_state,
+    whisper_full_n_segments_from_state, whisper_full_params, whisper_full_params__bindgen_ty_1,
+    whisper_full_params__bindgen_ty_2, whisper_full_with_state,
+    whisper_init_from_file_with_params_no_state, whisper_init_state,
+    whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH,
+    whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY, whisper_state,
+};
 
 #[derive(Clone, Deref, DerefMut)]
 struct WhisperContext(*mut whisper_context);
@@ -18,9 +27,7 @@ unsafe impl Sync for WhisperContext {}
 impl Drop for WhisperContext {
     #[doc(alias = "whisper_free")]
     fn drop(&mut self) {
-        unsafe {
-            whisper_free(self.0)
-        }
+        unsafe { whisper_free(self.0) }
     }
 }
 
@@ -40,23 +47,28 @@ impl WhisperModel {
     /// Loads a new *ggml* *whisper* model, given its file path.
     #[doc(alias = "whisper_init_from_file_with_params_no_state")]
     pub fn new_from_file<P>(model_path: P, use_gpu: bool) -> Result<Self, WhisperError>
-        where
-            P: AsRef<std::path::Path>,
+    where
+        P: AsRef<std::path::Path>,
     {
         let params = whisper_context_params { use_gpu };
 
-        let path_bytes = model_path.as_ref().to_string_lossy().to_string().into_bytes();
+        let path_bytes = model_path
+            .as_ref()
+            .to_string_lossy()
+            .to_string()
+            .into_bytes();
         let c_str = CString::new(path_bytes).unwrap();
 
-        let context = unsafe {
-            whisper_init_from_file_with_params_no_state(c_str.as_ptr(), params)
-        };
+        let context =
+            unsafe { whisper_init_from_file_with_params_no_state(c_str.as_ptr(), params) };
 
         if context.is_null() {
             return Err(WhisperError::Initialization);
         }
 
-        Ok(Self { context: Arc::new(RwLock::new(WhisperContext(context))) })
+        Ok(Self {
+            context: Arc::new(RwLock::new(WhisperContext(context))),
+        })
     }
     /*
     #[doc(alias = "whisper_init_from_buffer_with_params")]
@@ -83,9 +95,7 @@ unsafe impl Send for WhisperState {}
 impl Drop for WhisperState {
     #[doc(alias = "whisper_free_state")]
     fn drop(&mut self) {
-        unsafe {
-            whisper_free_state(self.0)
-        }
+        unsafe { whisper_free_state(self.0) }
     }
 }
 
@@ -114,14 +124,17 @@ impl WhisperSession {
         let state;
         {
             let locked = context.read().await;
-            unsafe {
-                state = whisper_init_state(locked.0)
-            };
+            unsafe { state = whisper_init_state(locked.0) };
         }
 
-        if state.is_null() { return Err(WhisperSessionError::Initialization); }
+        if state.is_null() {
+            return Err(WhisperSessionError::Initialization);
+        }
 
-        Ok(Self { context, state: WhisperState(state) })
+        Ok(Self {
+            context,
+            state: WhisperState(state),
+        })
     }
 
     /// Convert RAW PCM audio to log mel spectrogram.
@@ -186,11 +199,21 @@ impl WhisperSession {
     /// Run the entire model: PCM -> log mel spectrogram -> encoder -> decoder -> text.
     /// Uses the specified decoding strategy to obtain the text.
     #[doc(alias = "whisper_full_with_state")]
-    pub async fn full(&self, params: WhisperParams, samples: &[f32]) -> Result<(), WhisperSessionError> {
+    pub async fn full(
+        &self,
+        params: WhisperParams,
+        samples: &[f32],
+    ) -> Result<(), WhisperSessionError> {
         let locked = self.context.read().await;
         let res = unsafe {
             let (_vec, c_params) = params.c_params()?;
-            whisper_full_with_state(locked.0, self.state.0, c_params, samples.as_ptr(), samples.len() as std::os::raw::c_int)
+            whisper_full_with_state(
+                locked.0,
+                self.state.0,
+                c_params,
+                samples.as_ptr(),
+                samples.len() as std::os::raw::c_int,
+            )
         };
 
         if res != 0 {
@@ -204,9 +227,7 @@ impl WhisperSession {
     /// A segment can be a few words, a sentence, or even a paragraph.
     #[doc(alias = "whisper_full_n_segments_from_state")]
     pub fn segment_count(&self) -> u32 {
-        let res = unsafe {
-            whisper_full_n_segments_from_state(self.state.0)
-        };
+        let res = unsafe { whisper_full_n_segments_from_state(self.state.0) };
 
         res as u32
     }
@@ -234,7 +255,10 @@ impl WhisperSession {
     #[doc(alias = "whisper_full_get_segment_text_from_state")]
     pub fn segment_text(&self, segment: u32) -> Result<String, WhisperSessionError> {
         let text = unsafe {
-            let res = whisper_full_get_segment_text_from_state(self.state.0, segment as std::os::raw::c_int);
+            let res = whisper_full_get_segment_text_from_state(
+                self.state.0,
+                segment as std::os::raw::c_int,
+            );
             CString::from_raw(res.cast_mut())
         };
 
@@ -277,12 +301,33 @@ impl WhisperSession {
 enum WhisperParamsError {
     #[error("failed to convert String to CString: {0}")]
     SessionInitialization(#[from] std::ffi::NulError),
-
 }
 
 pub enum WhisperSampling {
-    Greedy,
-    BeamSearch,
+    Greedy {
+        /// ref: https://github.com/openai/whisper/blob/f82bc59f5ea234d4b97fb2860842ed38519f7e65/whisper/transcribe.py#L264
+        best_of: u32,
+    },
+    BeamSearch {
+        /// ref: https://github.com/openai/whisper/blob/f82bc59f5ea234d4b97fb2860842ed38519f7e65/whisper/transcribe.py#L265
+        beam_size: u32,
+
+        /// not implemented in whisper.cpp, ref: https://arxiv.org/pdf/2204.05424.pdf
+        patience: f32,
+    },
+}
+
+impl WhisperSampling {
+    pub fn default_greedy() -> Self {
+        Self::Greedy { best_of: 0 }
+    }
+
+    pub fn default_beam() -> Self {
+        Self::BeamSearch {
+            beam_size: 0,
+            patience: 0.0,
+        }
+    }
 }
 
 pub struct WhisperParams {
@@ -362,10 +407,7 @@ pub struct WhisperParams {
 
     /// Tokens to provide to the whisper decoder as initial prompt.
     /// These are prepended to any existing text context from a previous call.
-    prompt_tokens: (),
-
-    /// Number of tokens in the initial prompt.
-    prompt_token_count: u32,
+    prompt_tokens: Vec<i32>,
 
     /// For auto-detection, set to "" or "auto".
     language: String,
@@ -400,13 +442,6 @@ pub struct WhisperParams {
     /// Not implemented in whisper.cpp
     no_speech_thold: f32,
 
-    /// ref: https://github.com/openai/whisper/blob/f82bc59f5ea234d4b97fb2860842ed38519f7e65/whisper/transcribe.py#L264
-    greedy: (),
-
-    /// ref: https://github.com/openai/whisper/blob/f82bc59f5ea234d4b97fb2860842ed38519f7e65/whisper/transcribe.py#L265
-    /// not implemented, ref: https://arxiv.org/pdf/2204.05424.pdf
-    beam_search: (),
-
     /// Called for every newly generated text segment.
     new_segment_callback: (),
     new_segment_callback_user_data: (),
@@ -429,21 +464,21 @@ pub struct WhisperParams {
 
     ///
     grammar_rules: (),
-    grammar_rule_count: u32,
-    i_start_rule: u32,
+    grammar_rule_count: usize,
+    i_start_rule: usize,
     grammar_penalty: f32,
 }
 
 impl WhisperParams {
     pub fn new(sampling_strategy: WhisperSampling) -> Self {
         let c_strategy = match sampling_strategy {
-            WhisperSampling::Greedy => { whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY }
-            WhisperSampling::BeamSearch => { whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH }
+            WhisperSampling::Greedy { .. } => whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY,
+            WhisperSampling::BeamSearch { .. } => {
+                whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH
+            }
         };
 
-        let c_params = unsafe {
-            whisper_full_default_params(c_strategy)
-        };
+        let c_params = unsafe { whisper_full_default_params(c_strategy) };
 
         c_params.into()
     }
@@ -451,74 +486,216 @@ impl WhisperParams {
     /// Returns a [`whisper_full_params`] equivalent to this [`WhisperParams`].
     ///
     /// SAFETY: The returned [`whisper_full_params`] object must not live longer than the
-    /// accompanying [`Vec`], as it contains pointers to the vector's elements.
+    /// accompanying [`Vec`] and this [`WhisperParams`], as it contains pointers to the vector's
+    /// elements and members of this object instance.
     unsafe fn c_params(&self) -> Result<(Vec<CString>, whisper_full_params), WhisperParamsError> {
-        let v = vec![CString::new(self.initial_prompt.as_str())?, CString::new(self.language.as_str())?];
-        Ok((
-            v,
-            whisper_full_params {
-                strategy: match self.strategy {
-                    WhisperSampling::Greedy => { whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY }
-                    WhisperSampling::BeamSearch => { whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH }
-                },
-                n_threads: self.thread_count as std::os::raw::c_int,
-                n_max_text_ctx: self.max_text_ctx as std::os::raw::c_int,
-                offset_ms: self.offset_ms as std::os::raw::c_int,
-                duration_ms: self.duration_ms as std::os::raw::c_int,
-                translate: self.translate,
-                no_context: self.no_context,
-                no_timestamps: self.no_timestamps,
-                single_segment: self.single_segment,
-                print_special: self.print_special,
-                print_progress: self.print_progress,
-                print_realtime: self.print_realtime,
-                print_timestamps: self.print_timestamps,
-                token_timestamps: self.token_timestamps,
-                thold_pt: self.thold_pt,
-                thold_ptsum: self.thold_ptsum,
-                max_len: self.max_len as std::os::raw::c_int,
-                split_on_word: self.split_on_word,
-                max_tokens: self.max_tokens as std::os::raw::c_int,
-                speed_up: self.speed_up,
-                debug_mode: self.debug_mode,
-                audio_ctx: self.audio_ctx as std::os::raw::c_int,
-                tdrz_enable: self.tdrz_enable,
-                initial_prompt: v[0].as_ptr(),
-                prompt_tokens: (),
-                prompt_n_tokens: self.prompt_token_count as std::os::raw::c_int,
-                language: v[1].as_ptr(),
-                detect_language: self.detect_language,
-                suppress_blank: self.suppress_blank,
-                suppress_non_speech_tokens: self.suppress_non_speech_tokens,
-                temperature: self.temperature,
-                max_initial_ts: self.max_initial_ts,
-                length_penalty: self.length_penalty,
-                temperature_inc: self.temperature_inc,
-                entropy_thold: self.entropy_thold,
-                logprob_thold: self.logprob_thold,
-                no_speech_thold: self.no_speech_thold,
-                greedy: whisper_full_params__bindgen_ty_1 {},
-                beam_search: whisper_full_params__bindgen_ty_2 {},
-                new_segment_callback: None,
-                new_segment_callback_user_data: null_mut(),
-                progress_callback: None,
-                progress_callback_user_data: null_mut(),
-                encoder_begin_callback: None,
-                encoder_begin_callback_user_data: null_mut(),
-                abort_callback: None,
-                abort_callback_user_data: null_mut(),
-                logits_filter_callback: None,
-                logits_filter_callback_user_data: null_mut(),
-                grammar_rules: (),
-                n_grammar_rules: 0,
-                i_start_rule: 0,
-                grammar_penalty: 0.0,
-            }))
+        let mut v = vec![
+            CString::new(self.initial_prompt.as_str())?,
+            CString::new(self.language.as_str())?,
+        ];
+
+        let c_params = whisper_full_params {
+            strategy: match self.strategy {
+                WhisperSampling::Greedy { .. } => whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY,
+                WhisperSampling::BeamSearch { .. } => {
+                    whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH
+                }
+            },
+            n_threads: self.thread_count as std::os::raw::c_int,
+            n_max_text_ctx: self.max_text_ctx as std::os::raw::c_int,
+            offset_ms: self.offset_ms as std::os::raw::c_int,
+            duration_ms: self.duration_ms as std::os::raw::c_int,
+            translate: self.translate,
+            no_context: self.no_context,
+            no_timestamps: self.no_timestamps,
+            single_segment: self.single_segment,
+            print_special: self.print_special,
+            print_progress: self.print_progress,
+            print_realtime: self.print_realtime,
+            print_timestamps: self.print_timestamps,
+            token_timestamps: self.token_timestamps,
+            thold_pt: self.thold_pt,
+            thold_ptsum: self.thold_ptsum,
+            max_len: self.max_len as std::os::raw::c_int,
+            split_on_word: self.split_on_word,
+            max_tokens: self.max_tokens as std::os::raw::c_int,
+            speed_up: self.speed_up,
+            debug_mode: self.debug_mode,
+            audio_ctx: self.audio_ctx as std::os::raw::c_int,
+            tdrz_enable: self.tdrz_enable,
+            initial_prompt: {
+                if self.initial_prompt.is_empty() {
+                    null_mut()
+                } else {
+                    let i = v.len();
+                    v.push(CString::new(self.initial_prompt.as_str())?);
+                    v[i].as_ptr()
+                }
+            },
+            prompt_tokens: {
+                if self.prompt_tokens.is_empty() {
+                    null_mut()
+                } else {
+                    self.prompt_tokens.as_ptr()
+                }
+            },
+            prompt_n_tokens: self.prompt_tokens.len() as std::os::raw::c_int,
+            language: {
+                if self.language.is_empty() {
+                    null_mut()
+                } else {
+                    let i = v.len();
+                    v.push(CString::new(self.initial_prompt.as_str())?);
+                    v[i].as_ptr()
+                }
+            },
+            detect_language: self.detect_language,
+            suppress_blank: self.suppress_blank,
+            suppress_non_speech_tokens: self.suppress_non_speech_tokens,
+            temperature: self.temperature,
+            max_initial_ts: self.max_initial_ts,
+            length_penalty: self.length_penalty,
+            temperature_inc: self.temperature_inc,
+            entropy_thold: self.entropy_thold,
+            logprob_thold: self.logprob_thold,
+            no_speech_thold: self.no_speech_thold,
+            greedy: {
+                if let WhisperSampling::Greedy { best_of } = self.strategy {
+                    whisper_full_params__bindgen_ty_1 {
+                        best_of: best_of as std::os::raw::c_int,
+                    }
+                } else {
+                    whisper_full_params__bindgen_ty_1 { best_of: 0 }
+                }
+            },
+            beam_search: {
+                if let WhisperSampling::BeamSearch {
+                    beam_size,
+                    patience,
+                } = self.strategy
+                {
+                    whisper_full_params__bindgen_ty_2 {
+                        beam_size: beam_size as std::os::raw::c_int,
+                        patience,
+                    }
+                } else {
+                    whisper_full_params__bindgen_ty_2 {
+                        beam_size: 0,
+                        patience: 0.0,
+                    }
+                }
+            },
+            new_segment_callback: None,
+            new_segment_callback_user_data: null_mut(),
+            progress_callback: None,
+            progress_callback_user_data: null_mut(),
+            encoder_begin_callback: None,
+            encoder_begin_callback_user_data: null_mut(),
+            abort_callback: None,
+            abort_callback_user_data: null_mut(),
+            logits_filter_callback: None,
+            logits_filter_callback_user_data: null_mut(),
+            grammar_rules: null_mut(),
+            n_grammar_rules: self.grammar_rule_count,
+            i_start_rule: self.i_start_rule,
+            grammar_penalty: self.grammar_penalty,
+        };
+
+        Ok((v, c_params))
     }
 }
 
 impl From<whisper_full_params> for WhisperParams {
     fn from(value: whisper_full_params) -> Self {
-        todo!()
+        Self {
+            strategy: {
+                match value.strategy {
+                    whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY => WhisperSampling::Greedy {
+                        best_of: value.greedy.best_of as u32,
+                    },
+                    whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH => {
+                        WhisperSampling::BeamSearch {
+                            beam_size: value.beam_search.beam_size as u32,
+                            patience: value.beam_search.patience,
+                        }
+                    }
+                    _ => {
+                        unimplemented!("Sampling strategy not implemented!")
+                    }
+                }
+            },
+            thread_count: value.n_threads as u32,
+            max_text_ctx: value.n_max_text_ctx as u32,
+            offset_ms: value.offset_ms as u32,
+            duration_ms: value.duration_ms as u32,
+            translate: value.translate,
+            no_context: value.no_context,
+            no_timestamps: value.no_timestamps,
+            single_segment: value.single_segment,
+            print_special: value.print_special,
+            print_progress: value.print_progress,
+            print_realtime: value.print_realtime,
+            print_timestamps: value.print_timestamps,
+            token_timestamps: value.token_timestamps,
+            thold_pt: value.thold_pt,
+            thold_ptsum: value.thold_ptsum,
+            max_len: value.max_len as u32,
+            split_on_word: value.split_on_word,
+            max_tokens: value.max_tokens as u32,
+            speed_up: value.speed_up,
+            debug_mode: value.debug_mode,
+            audio_ctx: value.audio_ctx as u32,
+            tdrz_enable: value.tdrz_enable,
+            initial_prompt: {
+                if value.initial_prompt.is_null() {
+                    "".to_string()
+                } else {
+                    let c_str = unsafe { CString::from_raw(value.initial_prompt.cast_mut()) };
+                    c_str.into_string().unwrap_or("".to_string())
+                }
+            },
+            prompt_tokens: {
+                if value.prompt_tokens.is_null() {
+                    vec![]
+                } else {
+                    let slice = unsafe {
+                        slice::from_raw_parts(value.prompt_tokens, value.prompt_n_tokens as usize)
+                    };
+                    slice.to_vec()
+                }
+            },
+            language: {
+                if value.language.is_null() {
+                    "".to_string()
+                } else {
+                    let c_str = unsafe { CString::from_raw(value.language.cast_mut()) };
+                    c_str.into_string().unwrap_or("".to_string())
+                }
+            },
+            detect_language: value.detect_language,
+            suppress_blank: value.suppress_blank,
+            suppress_non_speech_tokens: value.suppress_non_speech_tokens,
+            temperature: value.temperature,
+            max_initial_ts: value.max_initial_ts,
+            length_penalty: value.length_penalty,
+            temperature_inc: value.temperature_inc,
+            entropy_thold: value.entropy_thold,
+            logprob_thold: value.logprob_thold,
+            no_speech_thold: value.no_speech_thold,
+            new_segment_callback: (),
+            new_segment_callback_user_data: (),
+            progress_callback: (),
+            progress_callback_user_data: (),
+            encoder_begin_callback: (),
+            encoder_begin_callback_user_data: (),
+            abort_callback: (),
+            abort_callback_user_data: (),
+            logits_filter_callback: (),
+            logits_filter_callback_user_data: (),
+            grammar_rules: (),
+            grammar_rule_count: value.n_grammar_rules,
+            i_start_rule: value.i_start_rule,
+            grammar_penalty: value.grammar_penalty,
+        }
     }
 }

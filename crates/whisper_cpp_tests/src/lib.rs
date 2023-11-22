@@ -16,7 +16,7 @@ mod tests {
     async fn it_works() -> Result<(), TestError> {
         let model = WhisperModel::new_from_file("", false)?;
         let session = model.new_session().await?;
-        let params = WhisperParams::new(WhisperSampling::Greedy);
+        let params = WhisperParams::new(WhisperSampling::default_greedy());
         let samples: Vec<f32> = vec![];
 
         session.full(params, &samples).await?;
