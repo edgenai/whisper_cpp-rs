@@ -19,7 +19,7 @@ mod tests {
         //TODO change to use env variables
         let model = WhisperModel::new_from_file("/home/pedro/dev/models/ggml-base.en.bin", false)?;
 
-        let session = model.new_session().await?;
+        let mut session = model.new_session().await?;
 
         let params = WhisperParams::new(WhisperSampling::default_greedy());
 

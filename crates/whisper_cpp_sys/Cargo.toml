@@ -15,3 +15,18 @@ link-cplusplus = "1.0.9"
 [build-dependencies]
 bindgen = "0.69.1"
 cmake = "0.1.50"
+
+[features]
+default = ["native"]
+native = ["avx", "avx2", "fma", "f16c", "accel"]
+avx = []
+avx2 = []
+fma = []
+f16c = [] # implied when compiled using MSVC with avx2/avx512
+accel = [] # Accelerate framework
+openvino = []
+cuda = []
+metal = []
+blas = []
+hipblas = []
+clblast = []

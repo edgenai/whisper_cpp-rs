@@ -1,6 +1,5 @@
 use std::{env, fs};
 use std::path::PathBuf;
-use std::process::exit;
 
 const SUBMODULE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/thirdparty/whisper.cpp");
 
@@ -9,16 +8,37 @@ fn main() {
     let header_path = submodule_dir.join("whisper.h");
 
     if fs::read_dir(submodule_dir).is_err() {
-        eprintln!("Could not find {SUBMODULE_DIR}. Did you forget to initialize submodules?");
-
-        exit(1);
+        panic!("Could not find {SUBMODULE_DIR}. Did you forget to initialize submodules?");
     }
 
-    let dst = cmake::Config::new(submodule_dir)
-        .configure_arg("-DBUILD_SHARED_LIBS=Off")
-        .configure_arg("-DWHISPER_BUILD_EXAMPLES=Off")
-        .configure_arg("-DWHISPER_BUILD_TESTS=Off")
-        .build();
+    let mut config = cmake::Config::new(submodule_dir);
+
+    config.define("BUILD_SHARED_LIBS", "OFF")
+        .define("WHISPER_BUILD_EXAMPLES", "OFF")
+        .define("WHISPER_BUILD_TESTS", "OFF")
+        .define("_XOPEN_SOURCE", "600");
+
+    #[cfg(not(feature = "avx"))]
+    {
+        config.define("WHISPER_NO_AVX", "ON")
+    }
+
+    #[cfg(not(feature = "avx2"))]
+    {
+        config.define("WHISPER_NO_AVX2", "ON")
+    }
+
+    #[cfg(not(feature = "fma"))]
+    {
+        config.define("WHISPER_NO_FMA", "ON")
+    }
+
+    #[cfg(not(feature = "f16c"))]
+    {
+        config.define("WHISPER_NO_F16C", "ON")
+    }
+
+    let dst = config.build();
 
     println!("cargo:rustc-link-search=native={}/lib/static", dst.display());
     println!("cargo:rustc-link-search=native={}/lib64/static", dst.display());
