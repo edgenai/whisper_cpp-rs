@@ -15,8 +15,7 @@ fn main() {
 
     config.define("BUILD_SHARED_LIBS", "OFF")
         .define("WHISPER_BUILD_EXAMPLES", "OFF")
-        .define("WHISPER_BUILD_TESTS", "OFF")
-        .define("_XOPEN_SOURCE", "600");
+        .define("WHISPER_BUILD_TESTS", "OFF");
 
     #[cfg(not(feature = "avx"))]
     {
@@ -45,7 +44,8 @@ fn main() {
     println!("cargo:rustc-link-lib=static=whisper");
 
     let bindings = bindgen::Builder::default()
-        .header(header_path.to_string_lossy())
+        .header(submodule_dir.join("ggml.h").to_string_lossy())
+        .header(submodule_dir.join("whisper.h").to_string_lossy())
         .parse_callbacks(Box::new(
             bindgen::CargoCallbacks::new().rerun_on_header_files(false),
         ))
