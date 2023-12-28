@@ -1,11 +1,11 @@
 use std::{env, fs};
 use std::path::PathBuf;
+use std::process::Command;
 
 const SUBMODULE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/thirdparty/whisper.cpp");
 
 fn main() {
     let submodule_dir = &PathBuf::from(SUBMODULE_DIR);
-    let header_path = submodule_dir.join("whisper.h");
 
     if fs::read_dir(submodule_dir).is_err() {
         panic!("Could not find {SUBMODULE_DIR}. Did you forget to initialize submodules?");
@@ -52,9 +52,7 @@ fn main() {
         .generate_comments(false)
         .allowlist_function("whisper_.*")
         .allowlist_type("whisper_.*")
-        .allowlist_function("ggml_.*")
         .allowlist_type("ggml_.*")
-        .clang_arg("-xc++")
         .generate()
         .expect("Unable to generate bindings");
 
@@ -63,4 +61,61 @@ fn main() {
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");
+
+    #[cfg(feature = "compat")]
+    {
+        // TODO this whole section is a bit hacky, could probably clean it up a bit, particularly the retrieval of symbols from the library files
+        // TODO windows support
+
+        let whisper_lib_name =
+            if cfg!(target_os = "linux") || cfg!(target_os = "macos") {
+                "libwhisper.a"
+            } else {
+                "whisper.lib"
+            };
+
+        let lib_path = out_path.join("lib").join("static");
+
+        // Modifying symbols exposed by the ggml library
+
+        let output = Command::new("nm")
+            .current_dir(&lib_path)
+            .arg(whisper_lib_name)
+            .output()
+            .expect("Failed to acquire symbols from the compiled library.");
+        if !output.status.success() {
+            panic!(
+                "An error has occurred while acquiring symbols from the compiled library ({})",
+                output.status
+            );
+        }
+        let out_str = String::from_utf8_lossy(output.stdout.as_slice());
+        let symbols = out_str.split('\n');
+
+        let mut cmd = Command::new("objcopy");
+        cmd.current_dir(&lib_path);
+        for symbol in symbols {
+            if !(symbol.contains("T ggml")
+                || symbol.contains("B ggml")
+                || symbol.contains("T gguf")
+                || symbol.contains("T quantize")
+                || symbol.contains("T dequantize"))
+            {
+                continue;
+            }
+
+            let formatted = symbol.trim_start_matches([' ', 'T', 'B', '0']);
+            cmd.arg(format!("--redefine-sym={formatted}=whisper_{formatted}"));
+        }
+        let status = cmd
+            .arg(whisper_lib_name)
+            .status()
+            .expect("Failed to modify global symbols from the ggml library.");
+        if !status.success() {
+            panic!(
+                "An error as occurred while modifying global symbols from library file ({})",
+                status
+            );
+        }
+    }
 }

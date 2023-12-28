@@ -210,6 +210,7 @@ impl WhisperSession {
         mut params: WhisperParams,
         samples: &[f32],
     ) -> Result<(), WhisperSessionError> {
+        // TODO use no_context from whisper_params instead
         params.prompt_tokens = self.prompt.clone();
         let locked = self.context.read().await;
         let res = unsafe {
