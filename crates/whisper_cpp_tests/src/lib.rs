@@ -16,15 +16,31 @@ mod tests {
 
     #[tokio::test]
     async fn it_works() -> Result<(), TestError> {
-        //TODO change to use env variables
-        let model = WhisperModel::new_from_file("/home/pedro/dev/models/ggml-base.en.bin", false)?;
+        let model_path_str = std::env::var("WHISPER_TEST_MODEL").unwrap_or_else(|_| {
+            eprintln!(
+                "WHISPER_TEST_MODEL environment variable not set. \
+                Please set this to the path to a GGUF model."
+            );
+
+            std::process::exit(1)
+        });
+
+        let sample_path_str = std::env::var("WHISPER_TEST_SAMPLE").unwrap_or_else(|_| {
+            eprintln!(
+                "WHISPER_TEST_SAMPLE environment variable not set. \
+                Please set this to the path to a sample wav file."
+            );
+
+            std::process::exit(1)
+        });
+
+        let model = WhisperModel::new_from_file(model_path_str, false)?;
 
         let mut session = model.new_session().await?;
 
         let params = WhisperParams::new(WhisperSampling::default_greedy());
 
-        //TODO change to use env variables
-        let mut file = std::fs::File::open("/home/pedro/Downloads/samples_jfk.wav")?;
+        let mut file = std::fs::File::open(sample_path_str)?;
         let (header, data) = wav::read(&mut file)?;
         let sixteens = data.as_sixteen().unwrap();
         let samples: Vec<_> = sixteens[..sixteens.len() / header.channel_count as usize]
