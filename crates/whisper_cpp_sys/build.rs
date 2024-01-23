@@ -112,7 +112,7 @@ fn main() {
                 continue;
             }
 
-            let formatted = symbol.trim_start_matches([' ', 'T', 'B', '0']);
+            let formatted = &symbol[11..];
             cmd.arg(format!("--redefine-sym={formatted}=whisper_{formatted}"));
         }
         let status = cmd
