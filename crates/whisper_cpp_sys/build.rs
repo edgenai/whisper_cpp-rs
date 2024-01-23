@@ -1,6 +1,8 @@
-use std::{env, fs};
 use std::path::PathBuf;
 use std::process::Command;
+use std::{env, fs};
+
+// TODO add feature compatibility checks
 
 const SUBMODULE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/thirdparty/whisper.cpp");
 
@@ -13,7 +15,8 @@ fn main() {
 
     let mut config = cmake::Config::new(submodule_dir);
 
-    config.define("BUILD_SHARED_LIBS", "OFF")
+    config
+        .define("BUILD_SHARED_LIBS", "OFF")
         .define("WHISPER_BUILD_EXAMPLES", "OFF")
         .define("WHISPER_BUILD_TESTS", "OFF");
 
@@ -39,8 +42,14 @@ fn main() {
 
     let dst = config.build();
 
-    println!("cargo:rustc-link-search=native={}/lib/static", dst.display());
-    println!("cargo:rustc-link-search=native={}/lib64/static", dst.display());
+    println!(
+        "cargo:rustc-link-search=native={}/lib/static",
+        dst.display()
+    );
+    println!(
+        "cargo:rustc-link-search=native={}/lib64/static",
+        dst.display()
+    );
     println!("cargo:rustc-link-lib=static=whisper");
 
     let bindings = bindgen::Builder::default()
@@ -65,20 +74,19 @@ fn main() {
     #[cfg(feature = "compat")]
     {
         // TODO this whole section is a bit hacky, could probably clean it up a bit, particularly the retrieval of symbols from the library files
-        // TODO windows support
 
-        let whisper_lib_name =
+        let (whisper_lib_name, nm_name, objcopy_name) =
             if cfg!(target_os = "linux") || cfg!(target_os = "macos") {
-                "libwhisper.a"
+                ("libwhisper.a", "nm", "objcopy")
             } else {
-                "whisper.lib"
+                ("whisper.lib", "llvm-nm", "llvm-objcopy")
             };
 
         let lib_path = out_path.join("lib").join("static");
 
         // Modifying symbols exposed by the ggml library
 
-        let output = Command::new("nm")
+        let output = Command::new(nm_name)
             .current_dir(&lib_path)
             .arg(whisper_lib_name)
             .output()
@@ -92,7 +100,7 @@ fn main() {
         let out_str = String::from_utf8_lossy(output.stdout.as_slice());
         let symbols = out_str.split('\n');
 
-        let mut cmd = Command::new("objcopy");
+        let mut cmd = Command::new(objcopy_name);
         cmd.current_dir(&lib_path);
         for symbol in symbols {
             if !(symbol.contains("T ggml")
