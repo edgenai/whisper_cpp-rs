@@ -11,11 +11,12 @@ use tokio::sync::RwLock;
 use whisper_cpp_sys::{
     whisper_context, whisper_context_params, whisper_free, whisper_free_state,
     whisper_full_default_params, whisper_full_get_segment_text_from_state,
-    whisper_full_n_segments_from_state, whisper_full_params, whisper_full_params__bindgen_ty_1,
+    whisper_full_get_token_id_from_state, whisper_full_n_segments_from_state,
+    whisper_full_n_tokens_from_state, whisper_full_params, whisper_full_params__bindgen_ty_1,
     whisper_full_params__bindgen_ty_2, whisper_full_with_state,
     whisper_init_from_file_with_params_no_state, whisper_init_state,
     whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH,
-    whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY, whisper_state,
+    whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY, whisper_state, whisper_token,
 };
 
 #[derive(Clone, Deref, DerefMut)]
@@ -48,8 +49,8 @@ impl WhisperModel {
     /// Loads a new *ggml* *whisper* model, given its file path.
     #[doc(alias = "whisper_init_from_file_with_params_no_state")]
     pub fn new_from_file<P>(model_path: P, use_gpu: bool) -> Result<Self, WhisperError>
-    where
-        P: AsRef<std::path::Path>,
+        where
+            P: AsRef<std::path::Path>,
     {
         let params = whisper_context_params { use_gpu };
 
@@ -93,6 +94,8 @@ struct WhisperState(*mut whisper_state);
 
 unsafe impl Send for WhisperState {}
 
+unsafe impl Sync for WhisperState {}
+
 impl Drop for WhisperState {
     #[doc(alias = "whisper_free_state")]
     fn drop(&mut self) {
@@ -117,6 +120,7 @@ pub enum WhisperSessionError {
 pub struct WhisperSession {
     context: Arc<RwLock<WhisperContext>>,
     state: WhisperState,
+    prompt: Vec<whisper_token>,
 }
 
 impl WhisperSession {
@@ -135,6 +139,7 @@ impl WhisperSession {
         Ok(Self {
             context,
             state: WhisperState(state),
+            prompt: vec![],
         })
     }
 
@@ -142,7 +147,7 @@ impl WhisperSession {
     /// The resulting spectrogram is stored inside the default state of the provided whisper context.
     /// Returns 0 on success
     #[doc(alias = "whisper_pcm_to_mel_with_state")]
-    fn pcm_to_mel(&self) {
+    pub fn pcm_to_mel(&self) {
         todo!()
     }
 
@@ -150,7 +155,7 @@ impl WhisperSession {
     /// The resulting spectrogram is stored inside the default state of the provided whisper context.
     /// Returns 0 on success
     #[doc(alias = "whisper_pcm_to_mel_phase_vocoder_with_state")]
-    fn pcm_to_mel_phase_vocoder(&self) {
+    pub fn pcm_to_mel_phase_vocoder(&self) {
         todo!()
     }
 
@@ -159,7 +164,7 @@ impl WhisperSession {
     /// n_mel must be 80
     /// Returns 0 on success
     #[doc(alias = "whisper_set_mel_with_state")]
-    fn set_mel(&self) {
+    pub fn set_mel(&self) {
         todo!()
     }
 
@@ -168,7 +173,7 @@ impl WhisperSession {
     /// offset can be used to specify the offset of the first frame in the spectrogram.
     /// Returns 0 on success
     #[doc(alias = "whisper_encode_with_state")]
-    fn encode(&self) {
+    pub fn encode(&self) {
         todo!()
     }
 
@@ -178,22 +183,22 @@ impl WhisperSession {
     /// n_past is the number of tokens to use from previous decoder calls.
     /// Returns 0 on success
     #[doc(alias = "whisper_decode_with_state")]
-    fn decode(&self) {
+    pub fn decode(&self) {
         todo!()
     }
 
     #[doc(alias = "whisper_lang_auto_detect_with_state")]
-    fn detect_lang(&self) {
+    pub fn detect_lang(&self) {
         todo!()
     }
 
     #[doc(alias = "whisper_n_len_from_state")]
-    fn mel_len(&self) {
+    pub fn mel_len(&self) {
         todo!()
     }
 
     #[doc(alias = "whisper_get_logits_from_state")]
-    fn logits(&self) {
+    pub fn logits(&self) {
         todo!()
     }
 
@@ -201,10 +206,12 @@ impl WhisperSession {
     /// Uses the specified decoding strategy to obtain the text.
     #[doc(alias = "whisper_full_with_state")]
     pub async fn full(
-        &self,
-        params: WhisperParams,
+        &mut self,
+        mut params: WhisperParams,
         samples: &[f32],
     ) -> Result<(), WhisperSessionError> {
+        // TODO use no_context from whisper_params instead
+        params.prompt_tokens = self.prompt.clone();
         let locked = self.context.read().await;
         let res = unsafe {
             let (_vec, c_params) = params.c_params()?;
@@ -221,6 +228,15 @@ impl WhisperSession {
             return Err(WhisperSessionError::Internal);
         }
 
+        let segments = self.segment_count();
+
+        for s in 0..segments {
+            let tokens = self.token_count(s);
+            for t in 0..tokens {
+                self.prompt.push(self.token_id(s, t));
+            }
+        }
+
         Ok(())
     }
 
@@ -235,20 +251,20 @@ impl WhisperSession {
 
     /// Get the language id associated with the [`WhisperSession`].
     #[doc(alias = "whisper_full_lang_id_from_state")]
-    fn lang_id(&self) {
+    pub fn lang_id(&self) {
         todo!()
     }
 
     /// Get the start and end time of the specified segment.
     #[doc(alias = "whisper_full_get_segment_t0_from_state")]
     #[doc(alias = "whisper_full_get_segment_t1_from_state")]
-    fn segment_time(&self) {
+    pub fn segment_time(&self) {
         todo!()
     }
 
     /// Get whether the next segment is predicted as a speaker turn.
     #[doc(alias = "whisper_full_get_segment_speaker_turn_next_from_state")]
-    fn is_speaker_next(&self) {
+    pub fn is_speaker_next(&self) {
         todo!()
     }
 
@@ -268,32 +284,42 @@ impl WhisperSession {
 
     /// Get number of tokens in the specified segment.
     #[doc(alias = "whisper_full_n_tokens_from_state")]
-    fn token_count(&self) {
-        todo!()
+    pub fn token_count(&self, segment: u32) -> u32 {
+        let res = unsafe {
+            whisper_full_n_tokens_from_state(self.state.0, segment as std::os::raw::c_int)
+        };
+
+        res as u32
     }
 
     /// Get the token text of the specified token in the specified segment.
     #[doc(alias = "whisper_full_get_token_text_from_state")]
-    fn token_text(&self) {
+    pub fn token_text(&self) {
         todo!()
     }
 
     /// Get the token id of the specified token in the specified segment.
     #[doc(alias = "whisper_full_get_token_id_from_state")]
-    fn token_id(&self) {
-        todo!()
+    pub fn token_id(&self, segment: u32, token: u32) -> i32 {
+        unsafe {
+            whisper_full_get_token_id_from_state(
+                self.state.0,
+                segment as std::os::raw::c_int,
+                token as std::os::raw::c_int,
+            )
+        }
     }
 
     /// Get token data for the specified token in the specified segment.
     /// This contains probabilities, timestamps, etc.
     #[doc(alias = "whisper_full_get_token_data_from_state")]
-    fn token_data(&self) {
+    pub fn token_data(&self) {
         todo!()
     }
 
     /// Get the probability of the specified token in the specified segment.
     #[doc(alias = "whisper_full_get_token_p_from_state")]
-    fn token_probability(&self) {
+    pub fn token_probability(&self) {
         todo!()
     }
 }
@@ -303,7 +329,6 @@ pub enum WhisperParamsError {
     #[error("failed to convert String to CString: {0}")]
     SessionInitialization(#[from] std::ffi::NulError),
 }
-
 
 #[derive(Debug)]
 pub enum WhisperSampling {
@@ -320,7 +345,6 @@ pub enum WhisperSampling {
     },
 }
 
-
 impl WhisperSampling {
     pub fn default_greedy() -> Self {
         Self::Greedy { best_of: 0 }
@@ -333,7 +357,6 @@ impl WhisperSampling {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub struct WhisperParams {
@@ -449,27 +472,27 @@ pub struct WhisperParams {
     no_speech_thold: f32,
 
     /// Called for every newly generated text segment.
-    new_segment_callback: (),
-    new_segment_callback_user_data: (),
+    _new_segment_callback: (),
+    _new_segment_callback_user_data: (),
 
     /// Called on each progress update.
-    progress_callback: (),
-    progress_callback_user_data: (),
+    _progress_callback: (),
+    _progress_callback_user_data: (),
 
     /// Called each time before the encoder starts.
-    encoder_begin_callback: (),
-    encoder_begin_callback_user_data: (),
+    _encoder_begin_callback: (),
+    _encoder_begin_callback_user_data: (),
 
     /// Called each time before ggml computation starts.
-    abort_callback: (),
-    abort_callback_user_data: (),
+    _abort_callback: (),
+    _abort_callback_user_data: (),
 
     /// Called by each decoder to filter obtained logits.
-    logits_filter_callback: (),
-    logits_filter_callback_user_data: (),
+    _logits_filter_callback: (),
+    _logits_filter_callback_user_data: (),
 
     ///
-    grammar_rules: (),
+    _grammar_rules: (),
     grammar_rule_count: usize,
     i_start_rule: usize,
     grammar_penalty: f32,
@@ -497,7 +520,10 @@ impl WhisperParams {
     unsafe fn c_params(&self) -> Result<(Vec<CString>, whisper_full_params), WhisperParamsError> {
         let mut v = vec![];
 
-        fn push_str(storage: &mut Vec<CString>, value: &str) -> Result<*const std::os::raw::c_char, std::ffi::NulError> {
+        fn push_str(
+            storage: &mut Vec<CString>,
+            value: &str,
+        ) -> Result<*const std::os::raw::c_char, std::ffi::NulError> {
             if value.is_empty() {
                 Ok(null_mut())
             } else {
@@ -607,9 +633,11 @@ impl From<whisper_full_params> for WhisperParams {
         Self {
             strategy: {
                 match value.strategy {
+                    #[allow(non_upper_case_globals)]
                     whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY => WhisperSampling::Greedy {
                         best_of: value.greedy.best_of as u32,
                     },
+                    #[allow(non_upper_case_globals)]
                     whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH => {
                         WhisperSampling::BeamSearch {
                             beam_size: value.beam_search.beam_size as u32,
@@ -621,7 +649,9 @@ impl From<whisper_full_params> for WhisperParams {
                     }
                 }
             },
-            thread_count: std::thread::available_parallelism().unwrap_or(unsafe { NonZeroUsize::new_unchecked(4) }).get() as u32,
+            thread_count: std::thread::available_parallelism()
+                .unwrap_or(unsafe { NonZeroUsize::new_unchecked(1) })
+                .get() as u32,
             max_text_ctx: value.n_max_text_ctx as u32,
             offset_ms: value.offset_ms as u32,
             duration_ms: value.duration_ms as u32,
@@ -679,17 +709,17 @@ impl From<whisper_full_params> for WhisperParams {
             entropy_thold: value.entropy_thold,
             logprob_thold: value.logprob_thold,
             no_speech_thold: value.no_speech_thold,
-            new_segment_callback: (),
-            new_segment_callback_user_data: (),
-            progress_callback: (),
-            progress_callback_user_data: (),
-            encoder_begin_callback: (),
-            encoder_begin_callback_user_data: (),
-            abort_callback: (),
-            abort_callback_user_data: (),
-            logits_filter_callback: (),
-            logits_filter_callback_user_data: (),
-            grammar_rules: (),
+            _new_segment_callback: (),
+            _new_segment_callback_user_data: (),
+            _progress_callback: (),
+            _progress_callback_user_data: (),
+            _encoder_begin_callback: (),
+            _encoder_begin_callback_user_data: (),
+            _abort_callback: (),
+            _abort_callback_user_data: (),
+            _logits_filter_callback: (),
+            _logits_filter_callback_user_data: (),
+            _grammar_rules: (),
             grammar_rule_count: value.n_grammar_rules,
             i_start_rule: value.i_start_rule,
             grammar_penalty: value.grammar_penalty,

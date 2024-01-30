@@ -1,12 +1,34 @@
 [package]
 name = "whisper_cpp"
-version = "0.1.0"
+version = "0.2.0"
+description = "Rust bindings for Whisper.cpp"
 edition = "2021"
+authors = ["Pedro Valente <pedro.amaral.valente@gmail.com>"]
+repository = "https://github.com/binedge/whisper_cpp-rs"
+license = "MIT OR Apache-2.0"
+readme = "../../README.md"
+publish = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-whisper_cpp_sys = { version = "^0.1.0", path = "../whisper_cpp_sys" }
-thiserror = "1.0.50"
-derive_more = "0.99.17"
-tokio = { version = "1.34.0", features = ["sync", "rt"] }
+thiserror = { workspace = true }
+derive_more = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt"] }
+whisper_cpp_sys = { workspace = true, default-features = false }
+
+[features]
+default = ["compat", "native"]
+compat = ["whisper_cpp_sys/compat"] # this feature modifies the symbols exposed by the generated libraries to avoid conflicts
+native = ["avx", "avx2", "fma", "f16c", "accel"]
+avx = ["whisper_cpp_sys/avx"]
+avx2 = ["whisper_cpp_sys/avx2"]
+fma = ["whisper_cpp_sys/fma"]
+f16c = ["whisper_cpp_sys/f16c"] # implied when compiled using MSVC with avx2/avx512
+accel = ["whisper_cpp_sys/accel"] # Accelerate framework
+openvino = ["whisper_cpp_sys/openvino"]
+cuda = ["whisper_cpp_sys/cuda"]
+metal = ["whisper_cpp_sys/metal"]
+blas = ["whisper_cpp_sys/blas"]
+hipblas = ["whisper_cpp_sys/hipblas"]
+clblast = ["whisper_cpp_sys/clblast"]
