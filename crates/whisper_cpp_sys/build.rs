@@ -18,6 +18,7 @@ fn main() {
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("WHISPER_BUILD_EXAMPLES", "OFF")
         .define("WHISPER_BUILD_TESTS", "OFF")
+        .define("WHISPER_NO_ACCELERATE", "ON") // TODO accelerate is used by default, but is causing issues atm, check why
         .define("WHISPER_METAL", "OFF"); // TODO this is on by default on Apple devices, and is causing issues, see why
 
     #[cfg(not(feature = "avx"))]
