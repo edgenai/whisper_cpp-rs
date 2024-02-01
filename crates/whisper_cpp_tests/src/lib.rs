@@ -19,19 +19,19 @@ mod tests {
         let model_path_str = std::env::var("WHISPER_TEST_MODEL").unwrap_or_else(|_| {
             eprintln!(
                 "WHISPER_TEST_MODEL environment variable not set. \
-                Please set this to the path to a GGUF model."
+                Please set this to the path to a Whisper GGUF model file for the test to run."
             );
 
-            std::process::exit(1)
+            std::process::exit(0)
         });
 
         let sample_path_str = std::env::var("WHISPER_TEST_SAMPLE").unwrap_or_else(|_| {
             eprintln!(
                 "WHISPER_TEST_SAMPLE environment variable not set. \
-                Please set this to the path to a sample wav file."
+                Please set this to the path to a sample wav file for the test to run."
             );
 
-            std::process::exit(1)
+            std::process::exit(0)
         });
 
         let model = WhisperModel::new_from_file(model_path_str, false)?;
