@@ -32,7 +32,7 @@ fn set_log() {
         unsafe {
             // SAFETY: performs a simple assignment to static variables. Should only execute once
             // before any logs are made.
-            whisper_log_set(Some(internal::llama_log_callback), null_mut());
+            whisper_log_set(Some(internal::whisper_log_callback), null_mut());
         }
     }
 }
@@ -753,7 +753,7 @@ mod internal {
     };
 
     #[no_mangle]
-    pub(crate) unsafe extern "C" fn llama_log_callback(
+    pub(crate) unsafe extern "C" fn whisper_log_callback(
         level: ggml_log_level,
         text: *const c_char,
         _user_data: *mut c_void,
