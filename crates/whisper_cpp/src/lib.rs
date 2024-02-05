@@ -109,6 +109,18 @@ impl WhisperModel {
     }
 }
 
+impl Clone for WhisperModel {
+    /// Makes a clone of the [`WhisperModel`].
+    ///
+    /// This creates another pointer to the same allocation, it does **NOT** allocate the same model
+    /// again in memory.
+    fn clone(&self) -> Self {
+        Self {
+            context: self.context.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Deref, DerefMut)]
 struct WhisperState(*mut whisper_state);
 
