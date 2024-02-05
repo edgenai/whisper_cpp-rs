@@ -15,6 +15,7 @@ publish = true
 thiserror = { workspace = true }
 derive_more = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt"] }
+tracing = { workspace = true }
 whisper_cpp_sys = { workspace = true, default-features = false }
 
 [features]

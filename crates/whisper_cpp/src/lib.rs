@@ -1,7 +1,9 @@
-use std::ffi::{CStr, CString};
+use core::ffi::{c_char, c_int, CStr};
+use std::ffi::CString;
 use std::num::NonZeroUsize;
 use std::ptr::null_mut;
 use std::slice;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use derive_more::{Deref, DerefMut};
@@ -14,10 +16,26 @@ use whisper_cpp_sys::{
     whisper_full_get_token_id_from_state, whisper_full_n_segments_from_state,
     whisper_full_n_tokens_from_state, whisper_full_params, whisper_full_params__bindgen_ty_1,
     whisper_full_params__bindgen_ty_2, whisper_full_with_state,
-    whisper_init_from_file_with_params_no_state, whisper_init_state,
+    whisper_init_from_file_with_params_no_state, whisper_init_state, whisper_log_set,
     whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH,
     whisper_sampling_strategy_WHISPER_SAMPLING_GREEDY, whisper_state, whisper_token,
 };
+
+/// Boolean indicating if a logger has already been set using [`whisper_log_set`].
+static LOGGER_SET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Sets the global [`whisper.cpp`][whisper.cpp] logger, if it wasn't set already.
+///
+/// [whisper.cpp]: https://github.com/ggerganov/whisper.cpp/
+fn set_log() {
+    if !LOGGER_SET.swap(true, Ordering::SeqCst) {
+        unsafe {
+            // SAFETY: performs a simple assignment to static variables. Should only execute once
+            // before any logs are made.
+            whisper_log_set(Some(internal::whisper_log_callback), null_mut());
+        }
+    }
+}
 
 #[derive(Clone, Deref, DerefMut)]
 struct WhisperContext(*mut whisper_context);
@@ -49,9 +67,11 @@ impl WhisperModel {
     /// Loads a new *ggml* *whisper* model, given its file path.
     #[doc(alias = "whisper_init_from_file_with_params_no_state")]
     pub fn new_from_file<P>(model_path: P, use_gpu: bool) -> Result<Self, WhisperError>
-        where
-            P: AsRef<std::path::Path>,
+    where
+        P: AsRef<std::path::Path>,
     {
+        set_log();
+
         let params = whisper_context_params { use_gpu };
 
         let path_bytes = model_path
@@ -220,7 +240,7 @@ impl WhisperSession {
                 self.state.0,
                 c_params,
                 samples.as_ptr(),
-                samples.len() as std::os::raw::c_int,
+                samples.len() as c_int,
             )
         };
 
@@ -272,10 +292,7 @@ impl WhisperSession {
     #[doc(alias = "whisper_full_get_segment_text_from_state")]
     pub fn segment_text(&self, segment: u32) -> Result<String, WhisperSessionError> {
         let text = unsafe {
-            let res = whisper_full_get_segment_text_from_state(
-                self.state.0,
-                segment as std::os::raw::c_int,
-            );
+            let res = whisper_full_get_segment_text_from_state(self.state.0, segment as c_int);
             CStr::from_ptr(res.cast_mut())
         };
 
@@ -285,9 +302,7 @@ impl WhisperSession {
     /// Get number of tokens in the specified segment.
     #[doc(alias = "whisper_full_n_tokens_from_state")]
     pub fn token_count(&self, segment: u32) -> u32 {
-        let res = unsafe {
-            whisper_full_n_tokens_from_state(self.state.0, segment as std::os::raw::c_int)
-        };
+        let res = unsafe { whisper_full_n_tokens_from_state(self.state.0, segment as c_int) };
 
         res as u32
     }
@@ -302,11 +317,7 @@ impl WhisperSession {
     #[doc(alias = "whisper_full_get_token_id_from_state")]
     pub fn token_id(&self, segment: u32, token: u32) -> i32 {
         unsafe {
-            whisper_full_get_token_id_from_state(
-                self.state.0,
-                segment as std::os::raw::c_int,
-                token as std::os::raw::c_int,
-            )
+            whisper_full_get_token_id_from_state(self.state.0, segment as c_int, token as c_int)
         }
     }
 
@@ -523,7 +534,7 @@ impl WhisperParams {
         fn push_str(
             storage: &mut Vec<CString>,
             value: &str,
-        ) -> Result<*const std::os::raw::c_char, std::ffi::NulError> {
+        ) -> Result<*const c_char, std::ffi::NulError> {
             if value.is_empty() {
                 Ok(null_mut())
             } else {
@@ -540,10 +551,10 @@ impl WhisperParams {
                     whisper_sampling_strategy_WHISPER_SAMPLING_BEAM_SEARCH
                 }
             },
-            n_threads: self.thread_count as std::os::raw::c_int,
-            n_max_text_ctx: self.max_text_ctx as std::os::raw::c_int,
-            offset_ms: self.offset_ms as std::os::raw::c_int,
-            duration_ms: self.duration_ms as std::os::raw::c_int,
+            n_threads: self.thread_count as c_int,
+            n_max_text_ctx: self.max_text_ctx as c_int,
+            offset_ms: self.offset_ms as c_int,
+            duration_ms: self.duration_ms as c_int,
             translate: self.translate,
             no_context: self.no_context,
             no_timestamps: self.no_timestamps,
@@ -555,12 +566,12 @@ impl WhisperParams {
             token_timestamps: self.token_timestamps,
             thold_pt: self.thold_pt,
             thold_ptsum: self.thold_ptsum,
-            max_len: self.max_len as std::os::raw::c_int,
+            max_len: self.max_len as c_int,
             split_on_word: self.split_on_word,
-            max_tokens: self.max_tokens as std::os::raw::c_int,
+            max_tokens: self.max_tokens as c_int,
             speed_up: self.speed_up,
             debug_mode: self.debug_mode,
-            audio_ctx: self.audio_ctx as std::os::raw::c_int,
+            audio_ctx: self.audio_ctx as c_int,
             tdrz_enable: self.tdrz_enable,
             initial_prompt: push_str(&mut v, &self.initial_prompt)?,
             prompt_tokens: {
@@ -570,7 +581,7 @@ impl WhisperParams {
                     self.prompt_tokens.as_ptr()
                 }
             },
-            prompt_n_tokens: self.prompt_tokens.len() as std::os::raw::c_int,
+            prompt_n_tokens: self.prompt_tokens.len() as c_int,
             language: push_str(&mut v, &self.language)?,
             detect_language: self.detect_language,
             suppress_blank: self.suppress_blank,
@@ -585,7 +596,7 @@ impl WhisperParams {
             greedy: {
                 if let WhisperSampling::Greedy { best_of } = self.strategy {
                     whisper_full_params__bindgen_ty_1 {
-                        best_of: best_of as std::os::raw::c_int,
+                        best_of: best_of as c_int,
                     }
                 } else {
                     whisper_full_params__bindgen_ty_1 { best_of: 0 }
@@ -598,7 +609,7 @@ impl WhisperParams {
                 } = self.strategy
                 {
                     whisper_full_params__bindgen_ty_2 {
-                        beam_size: beam_size as std::os::raw::c_int,
+                        beam_size: beam_size as c_int,
                         patience,
                     }
                 } else {
@@ -723,6 +734,47 @@ impl From<whisper_full_params> for WhisperParams {
             grammar_rule_count: value.n_grammar_rules,
             i_start_rule: value.i_start_rule,
             grammar_penalty: value.grammar_penalty,
+        }
+    }
+}
+
+mod internal {
+    #![allow(non_upper_case_globals)]
+    #![allow(non_camel_case_types)]
+    #![allow(non_snake_case)]
+
+    use core::ffi::{c_char, c_void, CStr};
+
+    use tracing::{error, info, trace, warn};
+
+    use whisper_cpp_sys::{
+        ggml_log_level, ggml_log_level_GGML_LOG_LEVEL_ERROR, ggml_log_level_GGML_LOG_LEVEL_INFO,
+        ggml_log_level_GGML_LOG_LEVEL_WARN,
+    };
+
+    #[no_mangle]
+    pub(crate) unsafe extern "C" fn whisper_log_callback(
+        level: ggml_log_level,
+        text: *const c_char,
+        _user_data: *mut c_void,
+    ) {
+        let text = unsafe {
+            // SAFETY: `text` is a NUL-terminated C String.
+            CStr::from_ptr(text)
+        };
+        let text = String::from_utf8_lossy(text.to_bytes());
+
+        let text = if let Some(stripped) = text.strip_suffix('\n') {
+            stripped
+        } else {
+            text.as_ref()
+        };
+
+        match level {
+            ggml_log_level_GGML_LOG_LEVEL_ERROR => error!("ggml: {text}"),
+            ggml_log_level_GGML_LOG_LEVEL_INFO => info!("ggml: {text}"),
+            ggml_log_level_GGML_LOG_LEVEL_WARN => warn!("ggml: {text}"),
+            _ => trace!("ggml: {text}"),
         }
     }
 }
