@@ -11,11 +11,11 @@ publish = true
 links = "whisper"
 
 [dependencies]
-link-cplusplus = { workspace = true }
+link-cplusplus = "1.0.9"
 
 [build-dependencies]
-bindgen = { workspace = true }
-cmake = { workspace = true }
+bindgen = "0.69.4"
+cmake = "0.1.50"
 
 [features]
 default = ["compat", "native"]

@@ -8,5 +8,5 @@ edition = "2021"
 [dependencies]
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-wav = { workspace = true }
-whisper_cpp = { workspace = true, features = ["compat", "native"] }
+wav = "1.0.0"
+whisper_cpp = { version = "^0.2.0", path = "../whisper_cpp", default-features = false, features = ["compat", "native"] }

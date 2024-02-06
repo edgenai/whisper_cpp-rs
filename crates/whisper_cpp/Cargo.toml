@@ -12,11 +12,11 @@ publish = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+derive_more = "0.99.17"
 thiserror = { workspace = true }
-derive_more = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt"] }
-tracing = { workspace = true }
-whisper_cpp_sys = { workspace = true, default-features = false }
+tracing = "0.1.40"
+whisper_cpp_sys = { version = "^0.2.0", path = "../whisper_cpp_sys", default-features = false }
 
 [features]
 default = ["compat", "native"]
