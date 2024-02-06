@@ -1,6 +1,6 @@
 [package]
 name = "whisper_cpp_tests"
-version = "0.1.0"
+version = "0.2.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,4 +9,4 @@ edition = "2021"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 wav = "1.0.0"
-whisper_cpp = { version = "^0.2.0", path = "../whisper_cpp", default-features = false, features = ["compat", "native"] }
+whisper_cpp = { version = "^0.2.1", path = "../whisper_cpp", default-features = false, features = ["compat", "native"] }

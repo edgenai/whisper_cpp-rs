@@ -645,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "whisper_cpp"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "derive_more",
  "thiserror",
@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "whisper_cpp_sys"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bindgen",
  "cmake",
@@ -665,7 +665,7 @@ dependencies = [
 
 [[package]]
 name = "whisper_cpp_tests"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "thiserror",
  "tokio",
