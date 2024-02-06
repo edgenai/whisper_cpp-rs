@@ -1,6 +1,6 @@
 [package]
 name = "whisper_cpp"
-version = "0.2.0"
+version = "0.2.1"
 description = "Rust bindings for Whisper.cpp"
 edition = "2021"
 authors = ["Pedro Valente <pedro.amaral.valente@gmail.com>"]
@@ -16,7 +16,7 @@ derive_more = "0.99.17"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt"] }
 tracing = "0.1.40"
-whisper_cpp_sys = { version = "^0.2.0", path = "../whisper_cpp_sys", default-features = false }
+whisper_cpp_sys = { version = "^0.2.1", path = "../whisper_cpp_sys", default-features = false }
 
 [features]
 default = ["compat", "native"]
