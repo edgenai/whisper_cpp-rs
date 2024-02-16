@@ -17,7 +17,7 @@ mod tests {
     #[tokio::test]
     async fn it_works() -> Result<(), TestError> {
         let model_paths = {
-            let mut dir = std::env::var("WHISPER_TEST_MODEL_DIR").unwrap_or_else(|_| {
+            let dir = std::env::var("WHISPER_TEST_MODEL_DIR").unwrap_or_else(|_| {
                 eprintln!(
                     "WHISPER_TEST_MODEL environment variable not set. \
                 Please set this to the path to a Whisper GGUF model file for the test to run."
@@ -26,11 +26,12 @@ mod tests {
                 std::process::exit(0)
             });
 
-            if !dir.ends_with('/') {
-                dir.push('/');
+            let dir = std::path::Path::new(&dir);
+
+            if !dir.is_dir() {
+                panic!("\"{}\" is not a directory", dir.to_string_lossy());
             }
 
-            let dir = std::path::Path::new(&dir);
             let mut models = tokio::fs::read_dir(dir).await.unwrap();
             let mut rv = vec![];
 
@@ -58,7 +59,13 @@ mod tests {
         });
 
         for model_path_str in model_paths {
-            let model = WhisperModel::new_from_file(model_path_str, false)?;
+            let device = if cfg!(any(feature = "cuda")) {
+                Some(0)
+            } else {
+                None
+            };
+
+            let model = WhisperModel::new_from_file(model_path_str, device)?;
 
             let mut session = model.new_session().await?;
 
@@ -79,7 +86,7 @@ mod tests {
                 result += &*session.segment_text(i)?;
             }
 
-            println!("{result}");
+            println!("\n{result}\n");
         }
 
         Ok(())

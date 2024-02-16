@@ -23,22 +23,28 @@ fn main() {
 
     #[cfg(not(feature = "avx"))]
     {
-        config.define("WHISPER_NO_AVX", "ON")
+        config.define("WHISPER_NO_AVX", "ON");
     }
 
     #[cfg(not(feature = "avx2"))]
     {
-        config.define("WHISPER_NO_AVX2", "ON")
+        config.define("WHISPER_NO_AVX2", "ON");
     }
 
     #[cfg(not(feature = "fma"))]
     {
-        config.define("WHISPER_NO_FMA", "ON")
+        config.define("WHISPER_NO_FMA", "ON");
     }
 
     #[cfg(not(feature = "f16c"))]
     {
-        config.define("WHISPER_NO_F16C", "ON")
+        config.define("WHISPER_NO_F16C", "ON");
+    }
+
+    #[cfg(feature = "cuda")]
+    {
+        // CUDA gets linked through the cudarc crate.
+        config.define("WHISPER_CUBLAS", "ON");
     }
 
     let dst = config.build();
