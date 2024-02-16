@@ -79,12 +79,8 @@ mod tests {
                 .map(|v| *v as f32 / 32768.)
                 .collect();
 
-            session.full(params, &samples).await?;
-
-            let mut result = "".to_string();
-            for i in 0..session.segment_count() {
-                result += &*session.segment_text(i)?;
-            }
+            session.advance(params, &samples).await?;
+            let result = session.new_context()?;
 
             println!("\n{result}\n");
         }
