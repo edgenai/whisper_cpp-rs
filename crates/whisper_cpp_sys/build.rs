@@ -43,7 +43,6 @@ fn main() {
 
     #[cfg(feature = "cuda")]
     {
-        // CUDA gets linked through the cudarc crate.
         config.define("WHISPER_CUBLAS", "ON");
     }
 
