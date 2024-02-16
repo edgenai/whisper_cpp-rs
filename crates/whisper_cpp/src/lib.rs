@@ -64,15 +64,19 @@ pub struct WhisperModel {
 }
 
 impl WhisperModel {
-    /// Loads a new *ggml* *whisper* model, given its file path.
+    /// Loads a new *ggml* *whisper* model, given its file path. If a device (GPU) index is
+    /// provided, the model is loaded into the GPU.
     #[doc(alias = "whisper_init_from_file_with_params_no_state")]
-    pub fn new_from_file<P>(model_path: P, use_gpu: bool) -> Result<Self, WhisperError>
+    pub fn new_from_file<P>(model_path: P, device: Option<u32>) -> Result<Self, WhisperError>
     where
         P: AsRef<std::path::Path>,
     {
         set_log();
 
-        let params = whisper_context_params { use_gpu };
+        let params = whisper_context_params {
+            use_gpu: device.is_some(),
+            gpu_device: device.unwrap_or(0) as i32,
+        };
 
         let path_bytes = model_path
             .as_ref()
