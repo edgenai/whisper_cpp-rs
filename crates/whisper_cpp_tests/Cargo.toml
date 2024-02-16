@@ -10,3 +10,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 wav = "1.0.0"
 whisper_cpp = { version = "^0.2.1", path = "../whisper_cpp", default-features = false, features = ["compat", "native"] }
+
+[features]
+cuda = ["whisper_cpp/cuda"]
