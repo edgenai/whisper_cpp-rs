@@ -139,7 +139,7 @@ mod compat {
     fn lib_name() -> &'static str {
         if cfg!(target_family = "windows") {
             "whisper.dll"
-        } else if cfg!(target_family = "unix") {
+        } else if cfg!(target_os = "linux") {
             "libwhisper.so"
         } else if cfg!(any(
             target_os = "macos",
