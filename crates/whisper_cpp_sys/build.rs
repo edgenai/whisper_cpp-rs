@@ -141,6 +141,12 @@ mod compat {
             "whisper.dll"
         } else if cfg!(target_family = "unix") {
             "libwhisper.so"
+        } else if cfg!(any(
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "dragonfly"
+        )) {
+            "libwhisper.dylib"
         } else {
             println!("cargo:warning=Unknown target family, defaulting to Unix lib names");
             "libwhisper.so"
