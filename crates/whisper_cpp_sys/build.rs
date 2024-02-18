@@ -56,7 +56,7 @@ fn main() {
         );
         println!("cargo:rustc-link-lib=dylib=whisper");
     } else {
-        println!("cargo:rustc-link-search=native=/lib{}", dst.display());
+        println!("cargo:rustc-link-search=native={}/lib", dst.display());
         println!("cargo:rustc-link-lib=dylib=whisper");
     }
 
