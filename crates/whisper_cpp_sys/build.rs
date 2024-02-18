@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use std::{env, fs};
+use std::path::PathBuf;
 
 // TODO add feature compatibility checks
 
@@ -48,12 +48,17 @@ fn main() {
 
     let dst = config.build();
 
-    println!("cargo:rustc-link-search=native={}/bin", dst.display());
-    println!(
-        "cargo:rustc-link-search=native={}/lib/static",
-        dst.display()
-    );
-    println!("cargo:rustc-link-lib=dylib=whisper");
+    if cfg!(target_family = "windows") {
+        println!("cargo:rustc-link-search=native={}/bin", dst.display());
+        println!(
+            "cargo:rustc-link-search=native={}/lib/static",
+            dst.display()
+        );
+        println!("cargo:rustc-link-lib=dylib=whisper");
+    } else {
+        println!("cargo:rustc-link-search=native=/lib{}", dst.display());
+        println!("cargo:rustc-link-lib=dylib=whisper");
+    }
 
     let bindings = bindgen::Builder::default()
         .header(submodule_dir.join("ggml.h").to_string_lossy())
@@ -93,7 +98,11 @@ mod compat {
         let (nm, objcopy) = tools();
         println!("Modifying {whisper_lib_name}, symbols acquired via \"{nm}\" and modified via \"{objcopy}\"");
 
-        let lib_path = out_path.as_ref().join("bin");
+        let lib_path = if cfg!(target_family = "windows") {
+            out_path.as_ref().join("bin")
+        } else {
+            out_path.as_ref().join("lib")
+        };
 
         // Modifying symbols exposed by the ggml library
 
