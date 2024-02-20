@@ -149,18 +149,12 @@ mod compat {
     /// Returns *Whisper.cpp*'s compiled library name, based on the operating system.
     fn lib_name() -> &'static str {
         if cfg!(target_family = "windows") {
-            "whisper.dll"
-        } else if cfg!(target_os = "linux") {
-            "libwhisper.so"
-        } else if cfg!(any(
-            target_os = "macos",
-            target_os = "ios",
-            target_os = "dragonfly"
-        )) {
-            "libwhisper.dylib"
+            "whisper.lib"
+        } else if cfg!(target_family = "unix") {
+            "libwhisper.a"
         } else {
             println!("cargo:warning=Unknown target family, defaulting to Unix lib names");
-            "libwhisper.so"
+            "libwhisper.a"
         }
     }
 
