@@ -1,4 +1,4 @@
-name: Rust
+name: Rust build
 
 on:
   push:
@@ -14,9 +14,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ macos-latest, ubuntu-latest, windows-latest ]
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: ubuntu-20.04
+          - os: windows-latest
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v3
@@ -28,6 +34,8 @@ jobs:
         echo "$(brew --prefix llvm@17)/bin" >> $GITHUB_PATH
     - name: Update submodules
       run: git submodule update --init --recursive
+    - if: matrix.target
+      run: rustup target add ${{ matrix.target }}
     - name: Build
       run: cargo build --verbose
     - name: Run tests
