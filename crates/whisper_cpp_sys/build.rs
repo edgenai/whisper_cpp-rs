@@ -15,7 +15,7 @@ fn main() {
     let mut config = cmake::Config::new(submodule_dir);
 
     config
-        .define("BUILD_SHARED_LIBS", "ON")
+        .define("BUILD_SHARED_LIBS", "OFF")
         .define("WHISPER_BUILD_EXAMPLES", "OFF")
         .define("WHISPER_BUILD_TESTS", "OFF")
         .define("WHISPER_NO_ACCELERATE", "ON") // TODO accelerate is used by default, but is causing issues atm, check why
@@ -43,22 +43,33 @@ fn main() {
 
     #[cfg(feature = "cuda")]
     {
+        println!("cargo:warning=CUDA compilation is highly unstable and untested at the moment");
         config.define("WHISPER_CUBLAS", "ON");
     }
 
     let dst = config.build();
 
-    if cfg!(target_family = "windows") {
-        println!("cargo:rustc-link-search=native={}/bin", dst.display());
-        println!(
-            "cargo:rustc-link-search=native={}/lib/static",
-            dst.display()
-        );
-        println!("cargo:rustc-link-lib=dylib=whisper");
-    } else {
-        println!("cargo:rustc-link-search=native={}/lib", dst.display());
-        println!("cargo:rustc-link-lib=dylib=whisper");
-    }
+    // if cfg!(target_family = "windows") {
+    //     println!("cargo:rustc-link-search=native={}/bin", dst.display());
+    //     println!(
+    //         "cargo:rustc-link-search=native={}/lib/static",
+    //         dst.display()
+    //     );
+    //     println!("cargo:rustc-link-lib=dylib=whisper");
+    // } else {
+    //     println!("cargo:rustc-link-search=native={}/lib", dst.display());
+    //     println!("cargo:rustc-link-lib=dylib=whisper");
+    // }
+
+    println!(
+        "cargo:rustc-link-search=native={}/lib/static",
+        dst.display()
+    );
+    println!(
+        "cargo:rustc-link-search=native={}/lib64/static",
+        dst.display()
+    );
+    println!("cargo:rustc-link-lib=static=whisper");
 
     let bindings = bindgen::Builder::default()
         .header(submodule_dir.join("ggml.h").to_string_lossy())
