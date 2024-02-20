@@ -15,7 +15,7 @@ fn main() {
     let mut config = cmake::Config::new(submodule_dir);
 
     config
-        .define("BUILD_SHARED_LIBS", "ON")
+        .define("BUILD_SHARED_LIBS", "OFF")
         .define("WHISPER_BUILD_EXAMPLES", "OFF")
         .define("WHISPER_BUILD_TESTS", "OFF")
         .define("WHISPER_NO_ACCELERATE", "ON") // TODO accelerate is used by default, but is causing issues atm, check why
@@ -43,22 +43,33 @@ fn main() {
 
     #[cfg(feature = "cuda")]
     {
+        println!("cargo:warning=CUDA compilation is highly unstable and untested at the moment");
         config.define("WHISPER_CUBLAS", "ON");
     }
 
     let dst = config.build();
 
-    if cfg!(target_family = "windows") {
-        println!("cargo:rustc-link-search=native={}/bin", dst.display());
-        println!(
-            "cargo:rustc-link-search=native={}/lib/static",
-            dst.display()
-        );
-        println!("cargo:rustc-link-lib=dylib=whisper");
-    } else {
-        println!("cargo:rustc-link-search=native={}/lib", dst.display());
-        println!("cargo:rustc-link-lib=dylib=whisper");
-    }
+    // if cfg!(target_family = "windows") {
+    //     println!("cargo:rustc-link-search=native={}/bin", dst.display());
+    //     println!(
+    //         "cargo:rustc-link-search=native={}/lib/static",
+    //         dst.display()
+    //     );
+    //     println!("cargo:rustc-link-lib=dylib=whisper");
+    // } else {
+    //     println!("cargo:rustc-link-search=native={}/lib", dst.display());
+    //     println!("cargo:rustc-link-lib=dylib=whisper");
+    // }
+
+    println!(
+        "cargo:rustc-link-search=native={}/lib/static",
+        dst.display()
+    );
+    println!(
+        "cargo:rustc-link-search=native={}/lib64/static",
+        dst.display()
+    );
+    println!("cargo:rustc-link-lib=static=whisper");
 
     let bindings = bindgen::Builder::default()
         .header(submodule_dir.join("ggml.h").to_string_lossy())
@@ -98,11 +109,7 @@ mod compat {
         let (nm, objcopy) = tools();
         println!("Modifying {whisper_lib_name}, symbols acquired via \"{nm}\" and modified via \"{objcopy}\"");
 
-        let lib_path = if cfg!(target_family = "windows") {
-            out_path.as_ref().join("bin")
-        } else {
-            out_path.as_ref().join("lib")
-        };
+        let lib_path = out_path.as_ref().join("lib").join("static");
 
         // Modifying symbols exposed by the ggml library
 
@@ -138,18 +145,12 @@ mod compat {
     /// Returns *Whisper.cpp*'s compiled library name, based on the operating system.
     fn lib_name() -> &'static str {
         if cfg!(target_family = "windows") {
-            "whisper.dll"
-        } else if cfg!(target_os = "linux") {
-            "libwhisper.so"
-        } else if cfg!(any(
-            target_os = "macos",
-            target_os = "ios",
-            target_os = "dragonfly"
-        )) {
-            "libwhisper.dylib"
+            "whisper.lib"
+        } else if cfg!(target_family = "unix") {
+            "libwhisper.a"
         } else {
             println!("cargo:warning=Unknown target family, defaulting to Unix lib names");
-            "libwhisper.so"
+            "libwhisper.a"
         }
     }
 
