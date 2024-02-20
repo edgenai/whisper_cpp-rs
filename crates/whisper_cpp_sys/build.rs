@@ -109,11 +109,7 @@ mod compat {
         let (nm, objcopy) = tools();
         println!("Modifying {whisper_lib_name}, symbols acquired via \"{nm}\" and modified via \"{objcopy}\"");
 
-        let lib_path = if cfg!(target_family = "windows") {
-            out_path.as_ref().join("bin")
-        } else {
-            out_path.as_ref().join("lib")
-        };
+        let lib_path = out_path.as_ref().join("lib").join("static");
 
         // Modifying symbols exposed by the ggml library
 
