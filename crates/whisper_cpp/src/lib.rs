@@ -462,14 +462,14 @@ pub struct WhisperParams {
     tdrz_enable: bool,
 
     /// Initial prompt, appended to any existing text context from a previous call.
-    initial_prompt: String,
+    pub initial_prompt: String,
 
     /// Tokens to provide to the whisper decoder as initial prompt.
     /// These are prepended to any existing text context from a previous call.
     prompt_tokens: Vec<i32>,
 
     /// For auto-detection, set to "" or "auto".
-    language: String,
+    pub language: String,
 
     /// Detect the language automatically.
     detect_language: bool,
@@ -481,7 +481,7 @@ pub struct WhisperParams {
     suppress_non_speech_tokens: bool,
 
     /// Initial decoding temperature, ref: https://ai.stackexchange.com/a/32478
-    temperature: f32,
+    pub temperature: f32,
 
     /// ref: https://github.com/openai/whisper/blob/f82bc59f5ea234d4b97fb2860842ed38519f7e65/whisper/decoding.py#L97
     max_initial_ts: f32,
